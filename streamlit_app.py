@@ -281,7 +281,7 @@ def register_dialog():
     alter = st.number_input("Alter", 1, 120, key="reg_alter")  # das alter geht von 1 bis 120
     geschlecht = st.selectbox(
         "Geschlecht",
-        ["männlich", "weiblich", "divers"],
+        ["männlich", "weiblich"],
         key="reg_geschlecht"
     )
 
@@ -379,7 +379,7 @@ elif st.session_state.page == "test_start" and st.session_state.user:
     test_modus = st.selectbox(
         "Wähle den Testmodus:",
         ["manueller Test (freie Dauer)",
-         "Ermüdungstest (15 Minuten),"
+         "Ermüdungstest (15 Minuten)",
          "Schnelltest (1 Minute)"]
     )
 
@@ -411,7 +411,7 @@ elif st.session_state.page == "test_start" and st.session_state.user:
     if st.button("Test starten", key="start_test_button"):
         st.write("Test läuft…")
         # der Test dauert jetzt solange wie man es vorher durch dauer_sec festgelegt hat
-        results = run_reaction_test(duration_sec=dauer_sec)
+        results, total_errors = run_reaction_test(duration_sec=dauer_sec)
 
         # zählt die vorhandenen Dateien im tests-Ordner und bestimmt so die nächste Testnummer
         test_num = len(os.listdir(test_folder)) + 1
@@ -423,7 +423,8 @@ elif st.session_state.page == "test_start" and st.session_state.user:
         data_to_save = {
             "mode": test_modus,           # speichert Testmodus
             "duration_sec": dauer_sec,    # speichert Dauer
-            "results": results            # Reaktionsdaten
+            "results": results,            # Reaktionsdaten
+            "total_errors": total_errors   # Gesamtfehler
         }
 
         with open(path, "w") as f:
@@ -436,14 +437,19 @@ elif st.session_state.page == "test_start" and st.session_state.user:
         df = pd.DataFrame(results)
         st.dataframe(df)
 
-        # wenn ein error in den spalten vorhanden ist wird die anzahl der fehler angezeigt
-        if "error" in df.columns:
-            st.write("Anzahl Fehler:", df["error"].count())
+        # die total_errors anzahl wird angezeigt
+        st.write(f"Gesamtfehler: {total_errors}")
 
 
         # berechnet einfache Statistiken anhand der Reaktionszeiten und zeigt sie an
-        st.write("Durchschnitt:", df["reaction_ms"].mean(), "ms")
-        st.write("Schnellste Reaktion:", df["reaction_ms"].min(), "ms")
+        # Falls Reaktionszeiten vorhanden → Statistik berechnen
+        if "reaction_ms" in df.columns:
+            st.write("Durchschnitt:", df["reaction_ms"].mean(), "ms")
+            st.write("Schnellste Reaktion:", df["reaction_ms"].min(), "ms")
+            st.write("Langsamste Reaktion:", df["reaction_ms"].max(), "ms")
+        else:
+            st.write("Keine Reaktionszeiten vorhanden.")
+
 
 # wenn Seite test_history und Nutzer eingeloggt dann das
 elif st.session_state.page == "test_history" and st.session_state.user:
@@ -486,9 +492,8 @@ elif st.session_state.page == "test_history" and st.session_state.user:
             st.dataframe(df)
 
 
-            # wenn die spalte error vorhanden ist wird die anzahl der fehler angezeigt
-            if "error" in df.columns:
-                st.write("Anzahl Fehler:", df["error"].count())
+            # Gesamtfehleranzahl anzeigen
+            st.write(f"Gesamtfehler: {data.get('total_errors', 0)}")
 
 
             # Optionale Statistiken

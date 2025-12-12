@@ -57,7 +57,7 @@ void loop() {
         if (cmd == "STOP") {
             testRunning = false;  //Test stoppen
             Serial.println("TEST_STOPPED");
-            Serial.print("FEHLER_TOTAL ");  // Fehleranzeige
+            Serial.print("Gesamtfehler: ");  // Fehleranzeige
             Serial.println(errorCount);
 
         }
@@ -66,42 +66,45 @@ void loop() {
     if (testRunning && millis() - testStartTime > TEST_DURATION) {
         testRunning = false;
         Serial.println("TEST_FINISHED");
-        Serial.print("FEHLER_TOTAL ");  // error anzeige
+        Serial.print("Gesamtfehler: ");  // error anzeige
         Serial.println(errorCount);
 
     }
 
     // wenn test läuft
     if (testRunning) {
+        
         // Überprüfen, ob ein Button gedrückt wurde, wenn einer gedrückt wurde, entsprechende LED ausschalten
         for (int i = 0; i < 9; i++) {  // für alle 9 Buzttons prüfen
-            if (digitalRead(BTN_PINS[i]) == LOW) {      // wenn Button gedrückt
-                // wenn LED AN ist - richtige Reaktion
-                if (ledStatus[i]) {
-                    // RICHTIG gedrückt
-                    ledStatus[i] = false;  // LED Status auf AUS setzen
-                    digitalWrite(LED_PINS[i], LOW);
-                    unsigned long duration = millis() - ledStartTime[i];  // berechnet wie lange die LED an war
+            
+            static unsigned long lastPress[9] = {0};
 
-                    Serial.print("LED ");
-                    Serial.print(i);
-                    Serial.print(" ausgeschaltet! Dauer: ");
-                    Serial.print(duration);
-                    Serial.println(" ms");
-                // wenn LED AUS ist - falsche Reaktion
-                } else {
-                    // FALSCH gedrückt → FEHLER
-                    errorCount++;       // Fehlercounter erhöhen um 1
-                    // Fehlermeldung senden
-                    Serial.print("FEHLER Button ");
-                    Serial.print(i);
-                    Serial.print(" gedrückt ohne LED! Gesamtfehler: ");
-                    Serial.println(errorCount);
+            if (digitalRead(BTN_PINS[i]) == LOW) {
+                unsigned long now = millis();
+                if (now - lastPress[i] > 80) {
+                    lastPress[i] = now;
+
+                    if (!ledStatus[i]) {  // Fehler: Button gedrückt, aber die LED war aus
+                        errorCount++;
+                        Serial.print("Gesamtfehler: ");
+                        Serial.println(errorCount);
+                    }
+                    
+                    else { // LED war an, alles ok
+                        ledStatus[i] = false;
+                        digitalWrite(LED_PINS[i], LOW);
+
+                        unsigned long duration = now - ledStartTime[i];
+                        Serial.print("LED ");
+                        Serial.print(i);
+                        Serial.print(" ausgeschaltet! Dauer: ");
+                        Serial.print(duration);
+                        Serial.println(" ms");
+                    }
                 }
-
-                delay(120); // entprellen
             }
 
+        }
 
         // Neue LED zufällig einschalten (nur aus LEDs)
         int offCount = 0;  // offCount ist Zähler der ausgeschalteten LEDs
@@ -134,6 +137,4 @@ void loop() {
 
         delay(100); // kleine Pause für Stabilität
     }
-}
-
-    
+} 
