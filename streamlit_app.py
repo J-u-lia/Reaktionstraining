@@ -414,7 +414,10 @@ elif st.session_state.page == "test_start" and st.session_state.user:
         results, total_errors = run_reaction_test(duration_sec=dauer_sec)
 
         # zählt die vorhandenen Dateien im tests-Ordner und bestimmt so die nächste Testnummer
-        test_num = len(os.listdir(test_folder)) + 1
+        # ist abegsichtert gegen wenn mal eine Dati gelöscht wurde
+        existing = [f for f in os.listdir(test_folder) if f.startswith("test_")]
+        test_num = len(existing) + 1
+
         # erzeugt pfad für die neue testdatei
         path = os.path.join(test_folder, f"test_{test_num}.json")
         
@@ -427,14 +430,15 @@ elif st.session_state.page == "test_start" and st.session_state.user:
             "total_errors": total_errors   # Gesamtfehler
         }
 
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data_to_save, f, indent=4)
+
 
 
         st.success(f"Test gespeichert als test_{test_num}.json")
 
         # wandelt die results in ein pandas DataFrame um und zeigt es in der App an
-        df = pd.DataFrame(results)
+        df = pd.DataFrame(results) if results else pd.DataFrame()
         st.dataframe(df)
 
         # die total_errors anzahl wird angezeigt
@@ -443,12 +447,13 @@ elif st.session_state.page == "test_start" and st.session_state.user:
 
         # berechnet einfache Statistiken anhand der Reaktionszeiten und zeigt sie an
         # Falls Reaktionszeiten vorhanden → Statistik berechnen
-        if "reaction_ms" in df.columns:
-            st.write("Durchschnitt:", df["reaction_ms"].mean(), "ms")
+        if "reaction_ms" in df.columns and not df["reaction_ms"].empty:
+            st.write("Durchschnitt:", round(df["reaction_ms"].mean(), 1), "ms")
             st.write("Schnellste Reaktion:", df["reaction_ms"].min(), "ms")
             st.write("Langsamste Reaktion:", df["reaction_ms"].max(), "ms")
         else:
-            st.write("Keine Reaktionszeiten vorhanden.")
+            st.info("Keine gültigen Reaktionszeiten vorhanden.")
+
 
 
 # wenn Seite test_history und Nutzer eingeloggt dann das
@@ -488,7 +493,9 @@ elif st.session_state.page == "test_history" and st.session_state.user:
             st.write(f"**Dauer:** {data['duration_sec']} Sekunden")
 
             # es wird das df results eingelkesen
-            df = pd.DataFrame(data["results"])
+            results = data.get("results", [])
+            df = pd.DataFrame(results) if results else pd.DataFrame()
+
             st.dataframe(df)
 
 
@@ -498,8 +505,11 @@ elif st.session_state.page == "test_history" and st.session_state.user:
 
             # Optionale Statistiken
             # wenn die spalte reactrion_ms vorhanden ist dann werden einige werte berechnet 
-            if "reaction_ms" in df.columns:
-                st.write("Durchschnitt:", df["reaction_ms"].mean(), "ms")
+            if "reaction_ms" in df.columns and not df["reaction_ms"].empty:
+                st.write("Durchschnitt:", round(df["reaction_ms"].mean(), 1), "ms")
                 st.write("Schnellste Reaktion:", df["reaction_ms"].min(), "ms")
                 st.write("Langsamste Reaktion:", df["reaction_ms"].max(), "ms")
+            else:
+                st.info("Keine gültigen Reaktionszeiten vorhanden.")
+
 

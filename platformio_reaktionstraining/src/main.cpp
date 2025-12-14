@@ -1,5 +1,17 @@
 // Arduino bibliothek einbinden, damit so Funktionen wie pinMode() oder digitalWrite() funktionieren
 #include <Arduino.h>
+// WLAN Bibliotheken einbinden - aktiviert WLAN-Funktionen damit der ESP32 ein WLAN Access Point erstellen kann
+#include <WiFi.h>
+// Webserver Bibliothek einbinden - damit er HTTP-Anfragen empfangen kann und URLs wie /start, /status und so verarbeitn kann
+#include <WebServer.h>
+
+// WLAN Zugangsdaten
+const char* ssid     = "Reaktionstest_ESP32";         // Name des WLANs
+const char* password = "reaktion1234";               // Passwort des WLANs
+
+WebServer server(80);  // Webserver auf Port 80
+
+String resultsJson = "[]";  // Variable um die Ergebnisse im JSON-Format zu speichern
 
 // Liste aller 9 LED-Pins
 const int LED_PINS[9] = {15, 2, 4, 18, 19, 21, 22, 13, 14};
@@ -22,6 +34,12 @@ unsigned long TEST_DURATION = 120000;  // Standardwert, wird von PC dann übersc
 // neue Variable für die Fehlererkennung
 int errorCount = 0;   // Fehler: Button gedrückt obwohl LED aus
 
+void handleStart();
+void handleStop();
+void handleStatus();
+void handleResults();
+
+
 // wird einmal bei einschalten von ESP32 ausgeführt
 void setup() {
     // Alle Pins als Ausgang setzen
@@ -31,37 +49,82 @@ void setup() {
 
         pinMode(BTN_PINS[i], INPUT_PULLUP);         // setzt jeden Button-Pin auf Eingang mit internen Pull-Up; ein gedrückter Button ist LOW
     }
+
     // starte die serielle Verbindung zum PC/Streamlit
     Serial.begin(115200); // oder 9600, je nach Einstellung
     // initialisere den Zufallszahlgenerator, damit die lEDs in zufälliger Reihenfolge leuchten
     randomSeed(analogRead(0)); // Zufall initialisieren
+
+    // definieren dass der ESP32 sein eigenes WLan erzeugt
+    WiFi.softAP(ssid, password);  // Starte das Access Point mit SSID und Passwor
+    Serial.println("WLAN Access Point gestartet");
+    Serial.print("IP Adresse: ");
+    Serial.println(WiFi.softAPIP());  // IP-Adresse des Access Points ausgeben
+
+    server.on("/start", handleStart);  // Test starten
+    server.on("/stop", handleStop);   // Test stoppen
+    server.on("/status", handleStatus);   // Status und fehler zurück geben
+    server.on("/results", handleResults);
+
+    server.begin();  // abhier nimmt er Anfragen an
+    Serial.println("HTTP Server gestartet");
+
+
 }
 
-void loop() {
-    // seriellen Input lesen
-    // prüft ob Daten vom PC angekommen sind
-    if (Serial.available()) {
-        String cmd = Serial.readStringUntil('\n');  // liest eine Zeile als String ein
-        // wennn die Nachricht vom PC mit Start beginnt, dann mit TEST_STARTED antworten und eine Flag setzten 
-        if (cmd.startsWith("START")) {
-            TEST_DURATION = cmd.substring(6).toInt(); // Zeit auslesen, Zahl nach "START "
-            testRunning = true;         // Test läuft jetzt
-            // Zeitparameter vom PC übernehmen
-            testStartTime = millis();
-            errorCount = 0;     // Fehlerzähler zurücksetzen
-            Serial.println("TEST_STARTED");     //Rückmeldung an PC
-        }
-
-
-        // wenn PC "STOP" gesendet hat dann mit TEST_STOPPED antworten
-        if (cmd == "STOP") {
-            testRunning = false;  //Test stoppen
-            Serial.println("TEST_STOPPED");
-            Serial.print("Gesamtfehler: ");  // Fehleranzeige
-            Serial.println(errorCount);
-
-        }
+// HTTP-Endpunkt zum Starten des Tests
+void handleStart() {
+    // streamlit sendet z.B /start?duration=120000 und ESP32 liest dann die Dauer stezt den Teststart und die Fehler zurück
+    if (server.hasArg("duration")) {
+        TEST_DURATION = server.arg("duration").toInt();
     }
+
+    testRunning = true;
+    testStartTime = millis();
+    resultsJson = "[]";   // alte Ergebnisse löschen
+    errorCount = 0;
+
+    // Endpoint - Rückmeldung dass der Test gestartet wurde in json format damit das einheitlich ist 
+    // ein Endpoint ist eine feste Adresse (URL) auf Gerät/Server - darüber können bestimmte Aktionen ausgeführt werden oder Daten abefragt
+    // ist also wie der definiterte Zugangspunkt an dem eine Anfrage ankommt
+    // der ESP hat 3 endpoints: /start; /stop; /status
+    server.send(200, "application/json", "{\"status\":\"started\"}");
+}
+
+void handleStop() {
+    // Test stoppen 
+    // streamlit sendet z.B /stop und ESP32 macht dann den Test aus
+    testRunning = false;
+    server.send(200, "application/json", "{\"status\":\"stopped\"}");
+}
+
+void handleStatus() {
+    // Status zurückgeben ob Test läuft und wieviele Fehler
+    String json = "{";
+    json += "\"running\":" + String(testRunning ? "true" : "false") + ",";
+    json += "\"errors\":" + String(errorCount);
+    json += "}";
+
+    server.send(200, "application/json", json);
+}
+
+void handleResults() {
+    String json = resultsJson;
+
+    // Array sauber schließen
+    if (json.startsWith("[") && !json.endsWith("]")) {
+        json += "]";
+    }
+
+    server.send(200, "application/json", json);
+}
+
+
+void loop() {
+    // Webserver Anfragen bearbeiten - ohne das reagiert der ESP32 nicht auf HTTP-Anfragen
+    // prüft ständig ob eine Anfrage kam, welcher URL und ruft dann die passende Funktion auf
+    server.handleClient();
+
     // wenn Test läuft und die Zeit vorbei ist, Test beenden
     if (testRunning && millis() - testStartTime > TEST_DURATION) {
         testRunning = false;
@@ -95,11 +158,22 @@ void loop() {
                         digitalWrite(LED_PINS[i], LOW);
 
                         unsigned long duration = now - ledStartTime[i];
-                        Serial.print("LED ");
-                        Serial.print(i);
-                        Serial.print(" ausgeschaltet! Dauer: ");
-                        Serial.print(duration);
-                        Serial.println(" ms");
+                        // JSON-Eintrag erzeugen
+                        if (resultsJson == "[]") {
+                            resultsJson = "[";
+                        } else {
+                            resultsJson += ",";
+                        }
+
+                        resultsJson += "{";
+                        resultsJson += "\"led\":" + String(i) + ",";
+                        resultsJson += "\"reaction_ms\":" + String(duration);
+                        resultsJson += "}";
+
+                        // LED ausschalten
+                        ledStatus[i] = false;
+                        digitalWrite(LED_PINS[i], LOW);
+
                     }
                 }
             }
