@@ -1,0 +1,139 @@
+{
+    "mode": "manueller Test (freie Dauer)",
+    "duration_sec": 60,
+    "results": [
+        {
+            "led": 6,
+            "reaction_ms": 87547
+        },
+        {
+            "led": 0,
+            "reaction_ms": 216
+        },
+        {
+            "led": 4,
+            "reaction_ms": 218
+        },
+        {
+            "led": 0,
+            "reaction_ms": 317
+        },
+        {
+            "led": 6,
+            "reaction_ms": 216
+        },
+        {
+            "led": 0,
+            "reaction_ms": 310
+        },
+        {
+            "led": 5,
+            "reaction_ms": 216
+        },
+        {
+            "led": 5,
+            "reaction_ms": 210
+        },
+        {
+            "led": 1,
+            "reaction_ms": 319
+        },
+        {
+            "led": 2,
+            "reaction_ms": 317
+        },
+        {
+            "led": 4,
+            "reaction_ms": 627
+        },
+        {
+            "led": 3,
+            "reaction_ms": 216
+        },
+        {
+            "led": 3,
+            "reaction_ms": 218
+        },
+        {
+            "led": 4,
+            "reaction_ms": 210
+        },
+        {
+            "led": 6,
+            "reaction_ms": 220
+        },
+        {
+            "led": 0,
+            "reaction_ms": 317
+        },
+        {
+            "led": 0,
+            "reaction_ms": 310
+        },
+        {
+            "led": 5,
+            "reaction_ms": 317
+        },
+        {
+            "led": 2,
+            "reaction_ms": 411
+        },
+        {
+            "led": 2,
+            "reaction_ms": 413
+        },
+        {
+            "led": 4,
+            "reaction_ms": 317
+        },
+        {
+            "led": 5,
+            "reaction_ms": 216
+        },
+        {
+            "led": 5,
+            "reaction_ms": 226
+        },
+        {
+            "led": 0,
+            "reaction_ms": 318
+        },
+        {
+            "led": 2,
+            "reaction_ms": 318
+        },
+        {
+            "led": 2,
+            "reaction_ms": 224
+        },
+        {
+            "led": 6,
+            "reaction_ms": 419
+        },
+        {
+            "led": 5,
+            "reaction_ms": 4032
+        },
+        {
+            "led": 6,
+            "reaction_ms": 313
+        },
+        {
+            "led": 2,
+            "reaction_ms": 317
+        },
+        {
+            "led": 6,
+            "reaction_ms": 738
+        },
+        {
+            "led": 5,
+            "reaction_ms": 418
+        },
+        {
+            "led": 0,
+            "reaction_ms": 319
+        }
+    ],
+    "total_errors": 192
+}

@@ -1,0 +1,163 @@
+{
+    "mode": "manueller Test (freie Dauer)",
+    "duration_sec": 60,
+    "results": [
+        {
+            "led": 6,
+            "reaction_ms": 72274
+        },
+        {
+            "led": 2,
+            "reaction_ms": 209
+        },
+        {
+            "led": 4,
+            "reaction_ms": 209
+        },
+        {
+            "led": 2,
+            "reaction_ms": 219
+        },
+        {
+            "led": 0,
+            "reaction_ms": 216
+        },
+        {
+            "led": 3,
+            "reaction_ms": 317
+        },
+        {
+            "led": 4,
+            "reaction_ms": 318
+        },
+        {
+            "led": 2,
+            "reaction_ms": 209
+        },
+        {
+            "led": 1,
+            "reaction_ms": 310
+        },
+        {
+            "led": 2,
+            "reaction_ms": 219
+        },
+        {
+            "led": 3,
+            "reaction_ms": 310
+        },
+        {
+            "led": 4,
+            "reaction_ms": 317
+        },
+        {
+            "led": 1,
+            "reaction_ms": 411
+        },
+        {
+            "led": 0,
+            "reaction_ms": 317
+        },
+        {
+            "led": 0,
+            "reaction_ms": 317
+        },
+        {
+            "led": 2,
+            "reaction_ms": 322
+        },
+        {
+            "led": 0,
+            "reaction_ms": 313
+        },
+        {
+            "led": 1,
+            "reaction_ms": 209
+        },
+        {
+            "led": 0,
+            "reaction_ms": 317
+        },
+        {
+            "led": 6,
+            "reaction_ms": 311
+        },
+        {
+            "led": 6,
+            "reaction_ms": 221
+        },
+        {
+            "led": 1,
+            "reaction_ms": 220
+        },
+        {
+            "led": 2,
+            "reaction_ms": 310
+        },
+        {
+            "led": 4,
+            "reaction_ms": 216
+        },
+        {
+            "led": 1,
+            "reaction_ms": 317
+        },
+        {
+            "led": 6,
+            "reaction_ms": 523
+        },
+        {
+            "led": 4,
+            "reaction_ms": 310
+        },
+        {
+            "led": 0,
+            "reaction_ms": 620
+        },
+        {
+            "led": 0,
+            "reaction_ms": 421
+        },
+        {
+            "led": 4,
+            "reaction_ms": 216
+        },
+        {
+            "led": 2,
+            "reaction_ms": 412
+        },
+        {
+            "led": 0,
+            "reaction_ms": 419
+        },
+        {
+            "led": 1,
+            "reaction_ms": 209
+        },
+        {
+            "led": 2,
+            "reaction_ms": 216
+        },
+        {
+            "led": 3,
+            "reaction_ms": 310
+        },
+        {
+            "led": 1,
+            "reaction_ms": 218
+        },
+        {
+            "led": 1,
+            "reaction_ms": 310
+        },
+        {
+            "led": 2,
+            "reaction_ms": 216
+        },
+        {
+            "led": 1,
+            "reaction_ms": 216
+        }
+    ],
+    "total_errors": 228
+}

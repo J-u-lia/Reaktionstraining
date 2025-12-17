@@ -5,6 +5,9 @@ import json  # zum Laden und Speichern von JSON-Dateien
 import pandas as pd  # für Tabellen und Dataframes
 from esp32_read import run_reaction_test   # Funktion um den Reaktionstest durchzuführen
 import base64 # für Hintergrundbildkodierung
+import numpy as np  # für numerische Operationen
+import altair as alt # für erweiterungen in Diagrammen - interktiv 
+from datetime import date, datetime   # für Alter berechnen und Datum speichern
 
 # ------------------------------------------------------
 # Hintergrundbild + Overlay
@@ -160,11 +163,27 @@ if "page" not in st.session_state:
 # steuert ob ein Dialog (Anmelden/Registrieren) aktiv ist
 if "active_dialog" not in st.session_state:
     st.session_state.active_dialog = None   # kein Dialog aktiv beim Start
+# steuert ob der editiermodus im Profil aktiv ist oder nicht
+if "edit_profile" not in st.session_state:
+    st.session_state.edit_profile = False
+
 
 
 # ------------------------------------------------------
 # Hilfsfunktionen
 # ------------------------------------------------------
+def calculate_age(birthdate: date) -> int:
+    '''Funktion die das Alter anhand vom geburtsdatum berechnet.
+    birthdate: Geburtsdatum als date-Objekt
+    return: Alter in Jahren als int
+    '''
+    # heutiges Datum ermitteln
+    today = date.today()
+    # Alter berechnen
+    return today.year - birthdate.year - (
+        (today.month, today.day) < (birthdate.month, birthdate.day)
+    )
+
 def user_folder(vorname, nachname):
     '''Funktion die den Pfad zum Benutzerordner erzeugt
     vorname: Vorname des Nutzers
@@ -176,11 +195,11 @@ def user_folder(vorname, nachname):
     # os.path.join verbindet die Teile zu einem gültigen Pfad und ist für betriebssystem-unabhängige Pfade wichtig
     return os.path.join(BASE_DIR, f"{nachname.lower()}_{vorname.lower()}")
 
-def save_user_profile(vorname, nachname, alter, geschlecht):
+def save_user_profile(vorname, nachname, geburtsdatum, geschlecht):
     '''Funktion um ein Nutzerprofil zu speichern
     vorname: Vorname des Nutzers
     nachname: Nachname des Nutzers
-    alter: Alter des Nutzers
+    geburtsdatum: Geburtsdatum des Nutzers
     geschlecht: Geschlecht des Nutzers
     speichert die Profildaten als JSON-Datei im Nutzerordner'''
     # ermittelt Ordnername für Nutzer und erstellt ihn über os.makedirs falls er noch nicht vorhandne ist
@@ -189,12 +208,15 @@ def save_user_profile(vorname, nachname, alter, geschlecht):
     # er wird im Unterordner tests für Testdateien angelegt
     os.makedirs(os.path.join(folder, "tests"), exist_ok=True)
 
+    alter = calculate_age(geburtsdatum)
+
     # profildaten die bei Regisrtrierung angegeben werden
     # ist ein python Dictionary das profil heißt mit den übergebenen Profilinformationen
     profil = {
         "vorname": vorname,
         "nachname": nachname,
         "alter": alter,
+        "geburtsdatum": geburtsdatum.isoformat(),
         "geschlecht": geschlecht
     }
 
@@ -221,6 +243,71 @@ def load_user(vorname, nachname):
             return json.load(f)
     # wenn nicht gefunden, gib None zurück
     return None
+
+
+def load_best_reaction_times(base_dir="nutzer"):
+    '''Funktion die alle Testdateien aller Nutzer ladet und von jedem Nutzer die besten Reaktionszeiten heraussucht
+    base_dir: Basisordner in dem die Nutzerordner liegen
+    return: Liste mit den besten Reaktionszeiten aller Nutzer
+    '''
+    # macht eine leere Liste für die besten Zeiten aller Nutzer
+    best_times = []
+
+    # sollte der Basisordner nicht existieren, wird eine leere Liste zurückgegeben
+    if not os.path.exists(base_dir):
+        return best_times
+
+    # wenn der Basisordner existiert, werden alle Nutzerordner darin durchlaufen
+    for user_folder in os.listdir(base_dir):
+        # es wird ein pfad erstellt zum testordner des jeweiligen nutzers
+        test_dir = os.path.join(base_dir, user_folder, "tests")
+        # wenn nicht vorhanden, wird der nächste Nutzerordner geprüft
+        if not os.path.isdir(test_dir):
+            continue
+        # wenn der testordner existiert, werden alle dateien darin durchlaufen
+        for file in os.listdir(test_dir):
+            # wenn man ein file findet das mit .json endet, wird es geöffnet und die daten geladen
+            if file.endswith(".json"):
+                with open(os.path.join(test_dir, file), "r") as f:
+                    data = json.load(f)
+                # aus den geladenen daten werden alle reaktionszeiten in einer liste gesammelt
+                reactions = [
+                    r["reaction_ms"]
+                    for r in data.get("results", [])
+                    if "reaction_ms" in r
+                ]
+                # wenn reaktionszeiten gefunden wurden, wird die beste (minimum) in die best_times liste aufgenommen
+                if reactions:
+                    best_times.append(min(reactions))  # nur die beste Zeit
+    return best_times
+
+def load_best_reaction_time_of_user(user):
+    '''Funktion die die beste Reaktionszeit vom akutell eingeloggten Nutzer holt. Bracuht man um die im gesamtn Diagramm sichtabr zu machen
+    user: Nutzerprofil als dict
+    return: beste Reaktionszeit des Nutzers in ms oder None wenn keine Tests vorhanden'''
+    # findet den ordner vom aktuellen nutzer und durchsucht alle testdateien nach der besten reaktionszeit
+    folder = user_folder(user["vorname"], user["nachname"])
+    test_dir = os.path.join(folder, "tests")
+    # wenn der testordner nicht existiert, wird None zurückgegeben
+    if not os.path.exists(test_dir):
+        return None
+     
+    best = None
+    # wenn ein ordner existiert dann werden alle dateien darin durchlaufen
+    for file in os.listdir(test_dir):
+        # findet man ein file das auf .json endet, wird es geöffnet und die daten geladen
+        if file.endswith(".json"):
+            with open(os.path.join(test_dir, file), "r") as f:
+                data = json.load(f)
+            # aus den geladenen daten wird die beste reaktionszeit gesucht aus der liste der ergebnisse
+            for r in data.get("results", []):
+                # wenn eine reaktionszeit gefunden wurde, wird sie mit der bisher besten verglichen und ggf. aktualisiert wenn sie kleiner ist wie die aktuelle
+                if "reaction_ms" in r:
+                    val = r["reaction_ms"]
+                    if best is None or val < best:
+                        best = val
+
+    return best
 
 
 # ------------------------------------------------------
@@ -278,7 +365,13 @@ def register_dialog():
     # Eingabefelder für Vorname, Nachname, Alter und Geschlecht mit dem entsprechenden Key für eindeutige Session-State-Bindings
     vor = st.text_input("Vorname", key="reg_vor")
     nach = st.text_input("Nachname", key="reg_nach")
-    alter = st.number_input("Alter", 1, 120, key="reg_alter")  # das alter geht von 1 bis 120
+    geburtsdatum = st.date_input(
+        "Geburtsdatum",
+        min_value=date(1900, 1, 1),
+        max_value=date.today(),
+        key="reg_birthdate"
+    )
+
     geschlecht = st.selectbox(
         "Geschlecht",
         ["männlich", "weiblich"],
@@ -287,7 +380,7 @@ def register_dialog():
 
     # button zur bestätigung der Registrierung und dann das Profil durch safe_user_profil speichern 
     if st.button("Registrierung bestätigen", key="register_confirm"):
-        save_user_profile(vor, nach, alter, geschlecht)
+        save_user_profile(vor, nach, geburtsdatum, geschlecht)
         st.success("Registrierung erfolgreich!")
         # läd das gerade erstellte Profil und setzt user, schließt Dialog und rerun() die APP damit der neu eingeloggte Zustand angezeigt wird
         st.session_state.user = load_user(vor, nach)
@@ -323,6 +416,7 @@ with header_right:
         # profilinformationen - setut die seite auf profile
         # neuen test starten - setzt die seite auf test_start
         # bisherige tests - setzt die seite auf test_history
+        # Startseite - setzt die seite auf home und lädt die app neu
         # abmelden - setzt user auf None, page auf home und lädt die App neu
         else:
             # Eingeloggt
@@ -335,10 +429,15 @@ with header_right:
             if st.button("Bisherige Tests", key="previous_tests_menu"):
                 st.session_state.page = "test_history"
 
+            if st.button("Startseite", key="startseite_menu_btn"):
+                st.session_state.page = "home"
+                st.rerun()       
+
             if st.button("Abmelden", key="logout_btn"):
                 st.session_state.user = None
                 st.session_state.page = "home"
                 st.rerun()
+
 
 
 # ------------------------------------------------------
@@ -356,15 +455,246 @@ elif st.session_state.active_dialog == "register":
 # ------------------------------------------------------
 # HAUPTSEITEN
 # ------------------------------------------------------
-
-# HOME - wenn Seite Home dann den Willkommenstext anzeigen
+# HOME - wenn Seite home dann die Startseitenüberschrift und den Erklärungstext anzeigen
+#      - lade die besten Reaktionszeiten aller Nutzer und zeige sie in einem Diagramm an
+#      - macht zwei spalten links und rechts für das Diagramm und den erklärtext 
 if st.session_state.page == "home":
-    st.write("Willkommen im Reaktionstestsystem!")
+    # kurzer erklärungstext zur App
+    st.markdown(
+        """
+        <p style="
+            color: white;
+            font-size: 1.2rem;
+            max-width: 900px;
+            margin-bottom: 40px;
+        ">
+            Sobald eine LED aufleuchtet, drücke den zugehörigen Button so schnell wie möglich.
+            Dieses System misst deine Reaktionszeit und Fehlerquote in Echtzeit.
+        </p>
+        """,
+        unsafe_allow_html=True
+    )
+    
+    # zuerst alle besten Reaktionszeiten aller Nutzer laden
+    reaction_times = load_best_reaction_times()
+
+    # wenn reaktionszeiten vorhanden sind, wird das diagramm und der erklärtext angezeigt
+    if reaction_times:
+        # dataframe aus den reaktionszeiten erstellen und dann den mittelwert aus den daten berechnen für den erklärtext 
+        df = pd.DataFrame(reaction_times, columns=["reaction_ms"])
+        avg = df["reaction_ms"].mean()
+
+        # zwei spalten erstellen für linke seite diagramm und rechte seite erklärtext
+        col_left, col_right = st.columns([1.2, 1])
+
+        # ------------------------
+        # LINKE SPALTE: KURVE + SPÄTER USER-PUNKT
+        # ------------------------
+        with col_left:
+            # wenn jemand angemeldet ist dann wird die unterüberschrift angepasst
+            if st.session_state.user:
+                st.subheader("Deine Reaktionszeit im Vergleich")
+            else:
+                st.subheader("Verteilung der schnellsten Reaktionszeiten")
+
+            # HISTOGRAMM -> LINIEN CHART MIT ALTAR
+
+            # durch np.histogram() wird ein Histogramm auf den Daten df["reaction_ms"] erstellt
+            # die 25 bins teilt den wertebereich von den reaktionszeiten in 25 gleich große Intervalle auf
+            # es werden counts (Anzahö der werte in jedem bin) und bin_edges (die grenzwerte der bins) zurückgegeben
+            counts, bin_edges = np.histogram(df["reaction_ms"], bins=25)
+            # berechnet die mittelpunkte der Bins
+            # er nimmt alle linken Ränder (bin_edges[:-1]) und addiert sie zu den rechten Rändern (bin_edges[1:]) und teilt durch 2
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            # erstellt jetzt das DataFrame das die Histogrammdaten speichert - reaction_ms sind die x-Werter und counts sind die y-Werte
+            curve_df = pd.DataFrame({
+                "reaction_ms": bin_centers,
+                "count": counts
+            })
+
+            # Linien-Chart mit Altair erstellen mit den Daten aus curve_df
+            line = alt.Chart(curve_df).mark_line(   # durch marek_line wird ein Liniendiagramm erstellt
+                interpolate="monotone",  # glättet die Kurve dass sie fließend aussieht
+                color="white"       # die linie wird weiß gefärbt
+            ).encode(   # definiert dei achsen
+                x=alt.X("reaction_ms:Q", title="Reaktionszeit (ms)"),   # die x achse sind die reaktionszeiten in ms (q sagt quantitative x-achse)
+                y=alt.Y("count:Q", title="Häufigkeit")               # die y achse ist die anzahl der vorkommnisse in jedem bin
+            )
+
+            # das liniendiagramm wird in einer variable chart gepsuechert damit man später einen kreis für den nutzer hinzuzufügen kann
+            chart = line
+
+            # prüfen ob ein nutzer eingeloggt ist oder nicht
+            if st.session_state.user:
+                # die beste reaktionszeit des nutzers aus der datenbank oder Datei laden
+                best_user_time = load_best_reaction_time_of_user(
+                    st.session_state.user
+                )
+                # wenn eine beste zeit vorhanden ist, wird ein punkt im diagramm hinzugefügt
+                if best_user_time is not None:
+                    # es wird die differenz zwischen nutzerzeit und allen Bin-Mittelpunkten ermittelt über das np.abs
+                    # das .argmin() gibt den index des minimalen werts zurück also den bin der am nächsten an der nutzerzeit liegt
+                    idx = np.abs(bin_centers - best_user_time).argmin()
+                    # dann wird die häufigkeit für diesen bin angegeben
+                    y_val = counts[idx]
+
+                    # ein dataframe für den kreis des nutzers erstellen
+                    user_df = pd.DataFrame({
+                        "reaction_ms": [best_user_time],
+                        "count": [y_val]
+                    })
+                    # einen roten kreis im diagramm für die nutzerzeit erstellen
+                    point = alt.Chart(user_df).mark_point(
+                        size=120,
+                        color="red"
+                    ).encode( # koordinaten aus dem dataframe
+                        x="reaction_ms:Q",
+                        y="count:Q"
+                    )
+                    # die linie und den punkt überlagern damit man di elinie und die beste zeit vom nutzer sieht
+                    chart = line + point
+            # das diagramm in der app anzeigen mit use_container_width=True damit es die ganze spaltenbreite nutzt
+            st.altair_chart(chart, use_container_width=True)
+
+        # ---------------------------------
+        # RECHTE SPALTE: BESCHREIBUNGSTEXT
+        # ---------------------------------
+        with col_right:
+            # auf der rechten seite wird wenn man im user satet ist also wenn jemand ngemeldet ist dann der text mit dem nutzerergebnis angezeigt
+            if st.session_state.user:
+                best_user_time = load_best_reaction_time_of_user(
+                    st.session_state.user
+                )
+
+                st.markdown(
+                    f"""
+        ### Dein Ergebnis
+
+        Deine **beste Reaktionszeit** liegt bei  
+        **{best_user_time} ms**.
+
+        Der rote Punkt im Diagramm zeigt,
+        wo du im Vergleich zu allen anderen liegst.
+        """
+                )
+            # wenn niemand angemeldet ist dann wird der allgemeine erklärtext angezeigt
+            else:
+                st.markdown(
+                    f"""
+        ### Über den Test
+
+        Der Reaktionstest ist eine der einfachsten Möglichkeiten,  
+        die menschliche Reaktionszeit objektiv zu überprüfen.
+
+        Die **durchschnittliche Reaktionszeit** aller Teilnehmer  
+        liegt bei **{avg:.1f} ms**.
+        """
+                )
+
+
+
+
 
 # PROFIL - wenn Seite profile und Nutzer eingeloggt dann die Unterüberschrift anzeigen und das Nutzerobjekt als formatiertes JSON ausgeben über st.json()
 elif st.session_state.page == "profile" and st.session_state.user:
+    user = st.session_state.user
+
     st.subheader("Profilinformationen")
-    st.json(st.session_state.user)
+
+    # -------------------------
+    # ANZEIGE-MODUS
+    # -------------------------
+    if not st.session_state.edit_profile:
+
+        left, right = st.columns([3, 1])
+
+        with left:
+            birthdate = datetime.fromisoformat(user["geburtsdatum"]).date()
+
+            st.markdown(
+                f"""
+            **Vorname:** {user['vorname']}  
+            **Nachname:** {user['nachname']}  
+            **Geburtsdatum:** {birthdate.strftime('%d.%m.%Y')}  
+            **Alter:** {user['alter']} Jahre  
+            **Geschlecht:** {user['geschlecht']}
+            """
+            )
+
+
+        with right:
+            st.write("")  
+            st.write("")  
+            if st.button("Profil bearbeiten"):
+                st.session_state.edit_profile = True
+                st.rerun()
+
+    # -------------------------
+    # BEARBEITUNGS-MODUS
+    # -------------------------
+    else:
+        st.markdown("### Profil bearbeiten")
+
+        new_vorname = st.text_input(
+            "Vorname",
+            value=user["vorname"]
+        )
+
+        new_nachname = st.text_input(
+            "Nachname",
+            value=user["nachname"]
+        )
+
+        birthdate_obj = datetime.fromisoformat(user["geburtsdatum"]).date()
+
+        new_birthdate = st.date_input(
+            "Geburtsdatum",
+            value=birthdate_obj,
+            min_value=date(1900, 1, 1),
+            max_value=date.today()
+        )
+
+        new_alter = calculate_age(new_birthdate)
+
+
+        new_geschlecht = st.selectbox(
+            "Geschlecht",
+            ["männlich", "weiblich"],
+            index=0 if user["geschlecht"] == "männlich" else 1
+        )
+
+        col_save, col_cancel = st.columns(2)
+
+        with col_save:
+            if st.button("Änderungen speichern"):
+                folder = user_folder(
+                    user["vorname"],
+                    user["nachname"]
+                )
+
+                updated_profile = {
+                    "vorname": new_vorname,
+                    "nachname": new_nachname,
+                    "geburtsdatum": new_birthdate.isoformat(),
+                    "alter": new_alter,
+                    "geschlecht": new_geschlecht
+                }
+
+                with open(os.path.join(folder, "profil.json"), "w") as f:
+                    json.dump(updated_profile, f, indent=4)
+
+                # Session-State aktualisieren
+                st.session_state.user = updated_profile
+                st.session_state.edit_profile = False
+                st.success("Profil aktualisiert")
+                st.rerun()
+
+        with col_cancel:
+            if st.button("Abbrechen"):
+                st.session_state.edit_profile = False
+                st.rerun()
+
+
 
 # TESTS - wenn Seite test_start und Nutzer eingeloggt dann Block für Teststart ausführen
 elif st.session_state.page == "test_start" and st.session_state.user:
@@ -372,6 +702,51 @@ elif st.session_state.page == "test_start" and st.session_state.user:
     user = st.session_state.user
     folder = user_folder(user["vorname"], user["nachname"])
     test_folder = os.path.join(folder, "tests")
+
+
+    st.subheader("Reaktionsspiel – Anleitung")
+
+    st.markdown(
+        """
+**Willkommen zum Reaktionsspiel!**  
+Teste deine Reaktionsgeschwindigkeit mit unseren 7 Arcade - Buttons.
+
+---
+
+### Spielablauf
+
+**Modus und Dauer wählen:**  
+Du kannst zwischen drei verschiedenen Modi auswählen (z. B. manuell, Ermüdung und Schnelltest – die Modi unterscheiden sich in der Testdauer).  
+
+**Test starten:**  
+Klicke auf den Button „Test starten“ in der Streamlit-App.
+
+**Spielen:**  
+Nach dem Start leuchtet in zufälligen Abständen eine der 7 LEDs auf.  
+Deine Aufgabe: So schnell wie möglich den entsprechenden Button drücken, dessen LED gerade leuchtet.  
+Sobald du richtig drückst, erlischt die LED und kurz darauf leuchtet eine neue (zufällige) LED auf.  
+Der Test läuft so lange, bis die gewählte Zeit abgelaufen ist.
+
+**Ergebnisse:**  
+Nach Ende des Tests werden dir folgende Daten angezeigt:  
+- Schnellste Reaktionszeit  
+- Durchschnittliche Reaktionszeit  
+- Anzahl der korrekten Reaktionen  
+- Error-Count  
+- Weitere Statistiken je nach Modus
+
+**Tipps für beste Ergebnisse:**  
+- Konzentriere dich voll auf die LEDs.  
+- Drücke nur, wenn die passende LED wirklich leuchtet – falsche Drücke erhöhen den Error-Count.  
+- Je schwieriger der Modus, desto kürzer und unvorhersehbarer die Abstände.  
+
+
+Viel Spaß beim Knacken deiner Bestzeit!
+"""
+    )
+
+    st.write("---")
+
 
     st.subheader("Reaktionstest - Testmodus auswählen")
 
@@ -511,5 +886,4 @@ elif st.session_state.page == "test_history" and st.session_state.user:
                 st.write("Langsamste Reaktion:", df["reaction_ms"].max(), "ms")
             else:
                 st.info("Keine gültigen Reaktionszeiten vorhanden.")
-
 

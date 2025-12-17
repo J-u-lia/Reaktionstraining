@@ -13,19 +13,21 @@ WebServer server(80);  // Webserver auf Port 80
 
 String resultsJson = "[]";  // Variable um die Ergebnisse im JSON-Format zu speichern
 
-// Liste aller 9 LED-Pins
-const int LED_PINS[9] = {15, 2, 4, 18, 19, 21, 22, 13, 14};
-const int BTN_PINS[9] = {32, 32, 32, 32, 32, 32, 32, 32, 32};
+// Liste aller 7 LED-Pins
+const int LED_PINS[7] = {15, 2, 4, 18, 19, 21, 22};
+// Liste aller 7 Button-Pins
+const int BTN_PINS[7] = {32, 32, 32, 32, 32, 32, 32};
+
+//const int BTN_PINS[7] = {32, 12, 27, 26, 25, 33, 35};
 
 // Zeitpunkte speichern wann LED eingeschaltet wurde
 // speichert für jede LED den Startzeitpunkt wann sie eingeschalten wurde
-unsigned long ledStartTime[9] = {0,0,0,0,0,0,0,0,0};
+unsigned long ledStartTime[7] = {0,0,0,0,0,0,0};
 
-// const int BTN_PINS[9] = {32, 12, 27, 26, 25, 33, 35, 34, 23};
 
 // Status-Array: true = LED an, false = LED aus
 // merkt sich ob sie an oder aus ist
-bool ledStatus[9] = {false, false, false, false, false, false, false, false, false};
+bool ledStatus[7] = {false, false, false, false, false, false, false};
 
 bool testRunning = false;   // merkt ob Test gerade läuft oder nicht
 unsigned long testStartTime = 0;         // Zeitpunkt wann Test gestartet wurde
@@ -39,11 +41,55 @@ void handleStop();
 void handleStatus();
 void handleResults();
 
+// vor echtem start des tests amchen die leds ein startsignal
+void visualCountdown() {
+    // 3x kurz blinken:
+    for (int i = 0; i < 3; i++) {
+        for (int l = 0; l < 7; l++) {
+            digitalWrite(LED_PINS[l], HIGH);
+        }
+        delay(200);  // kurz an
+
+        for (int l = 0; l < 7; l++) {
+            digitalWrite(LED_PINS[l], LOW);
+        }
+        delay(300);  // kurze Pause
+    }
+
+    // 1x langes Leuchten
+    for (int l = 0; l < 7; l++) {
+        digitalWrite(LED_PINS[l], HIGH);
+    }
+    delay(800);  // lang an
+
+    // alles aus
+    for (int l = 0; l < 7; l++) {
+        digitalWrite(LED_PINS[l], LOW);
+    }
+
+    delay(300); // kleine Pause vor Teststart
+}
+
+// am ende vom test blinken die leds kurz 2mal damit man weiß ok der test ist vorbei
+void testFinishedBlink() {
+    for (int i = 0; i < 2; i++) {   // 2x blinken
+        for (int l = 0; l < 7; l++) {
+            digitalWrite(LED_PINS[l], HIGH);
+        }
+        delay(250);
+
+        for (int l = 0; l < 7; l++) {
+            digitalWrite(LED_PINS[l], LOW);
+        }
+        delay(250);
+    }
+}
+
 
 // wird einmal bei einschalten von ESP32 ausgeführt
 void setup() {
     // Alle Pins als Ausgang setzen
-    for (int i = 0; i < 9; i++) {       // Schleife über alle 9 LEDs und Buttons
+    for (int i = 0; i < 7; i++) {       // Schleife über alle 7 LEDs und Buttons
         pinMode(LED_PINS[i], OUTPUT);   // setzt jeden LED-Pin auf Ausgang, damit man ihn EIN/AUS schalten können
         digitalWrite(LED_PINS[i], LOW);     // stellt sicher dass alle LEDs aussind
 
@@ -79,10 +125,14 @@ void handleStart() {
         TEST_DURATION = server.arg("duration").toInt();
     }
 
-    testRunning = true;
-    testStartTime = millis();
+    testRunning = false;
     resultsJson = "[]";   // alte Ergebnisse löschen
     errorCount = 0;
+
+    visualCountdown();  // Countdown anzeigen
+
+    testRunning = true;
+    testStartTime = millis();  // Zeitpunkt merken wann Test gestartet wurde
 
     // Endpoint - Rückmeldung dass der Test gestartet wurde in json format damit das einheitlich ist 
     // ein Endpoint ist eine feste Adresse (URL) auf Gerät/Server - darüber können bestimmte Aktionen ausgeführt werden oder Daten abefragt
@@ -127,20 +177,29 @@ void loop() {
 
     // wenn Test läuft und die Zeit vorbei ist, Test beenden
     if (testRunning && millis() - testStartTime > TEST_DURATION) {
-        testRunning = false;
-        Serial.println("TEST_FINISHED");
-        Serial.print("Gesamtfehler: ");  // error anzeige
-        Serial.println(errorCount);
+        testRunning = false;  // Test beendet
 
+        // alle LEDs aus & Status zurücksetzen
+        for (int i = 0; i < 7; i++) {
+            ledStatus[i] = false;
+            digitalWrite(LED_PINS[i], LOW);
+        }
+
+        delay(100);
+        testFinishedBlink();  // kurz das visuelle signal das der test aus ist
+
+        Serial.println("TEST_FINISHED");
+        Serial.print("Gesamtfehler: ");
+        Serial.println(errorCount);
     }
 
     // wenn test läuft
     if (testRunning) {
         
         // Überprüfen, ob ein Button gedrückt wurde, wenn einer gedrückt wurde, entsprechende LED ausschalten
-        for (int i = 0; i < 9; i++) {  // für alle 9 Buzttons prüfen
+        for (int i = 0; i < 7; i++) {  // für alle 7 Buzttons prüfen
             
-            static unsigned long lastPress[9] = {0};
+            static unsigned long lastPress[7] = {0};
 
             if (digitalRead(BTN_PINS[i]) == LOW) {
                 unsigned long now = millis();
@@ -182,14 +241,14 @@ void loop() {
 
         // Neue LED zufällig einschalten (nur aus LEDs)
         int offCount = 0;  // offCount ist Zähler der ausgeschalteten LEDs
-        for (int i = 0; i < 9; i++) if (!ledStatus[i]) offCount++;  // wenn die LED aus ist, Zähler erhöhen (! = NOT)
+        for (int i = 0; i < 7; i++) if (!ledStatus[i]) offCount++;  // wenn die LED aus ist, Zähler erhöhen (! = NOT)
 
-        if (offCount > 8) { // nur einschalten, wenn alle LEDs aus sind
+        if (offCount > 6) { // nur einschalten, wenn alle LEDs aus sind
             int r;  // Variable für zufälligen Index
             // schleife soll ausgeführt werden solang eine LED leuchtet
             // wir wollen eine ausgeschaltete LED auswählen, solange wiederholen wie sie an ist
             do {
-                r = random(0, 9);  // erstellt Zufallszahl zw 0 und 8
+                r = random(0, 7);  // erstellt Zufallszahl zw 0 und 6
             } while (ledStatus[r]);
             
             // random(min, max) zeit in ms
