@@ -322,6 +322,8 @@ def login_dialog():
     Login bestätigen Button lädt das Nutzerprofil und speichert es im Session-State
     '''
     # Eingabefelder für Vorname und Nachname mit dem enstprechenden Key für eindeutige Session-State-Bindings
+    # key ist die eindeutige Kennung für das Eingabefeld im Session-State, braucht streamlit um Werte zuspeichern, widges auseinanderzuhalten, session-states richtig zuordnen, neuladen richtig durchzuführen
+    # ohne key wüsste streamlit nht welches textfeld gemeint ist, welcher button schon geklickt wurde und zu welchem widget welcher wert gehört weil streamlit läuft immer neu
     vor = st.text_input("Vorname", key="login_vor")
     nach = st.text_input("Nachname", key="login_nach")
 
@@ -734,12 +736,6 @@ Nach Ende des Tests werden dir folgende Daten angezeigt:
 - Anzahl der korrekten Reaktionen  
 - Error-Count  
 - Weitere Statistiken je nach Modus
-
-**Tipps für beste Ergebnisse:**  
-- Konzentriere dich voll auf die LEDs.  
-- Drücke nur, wenn die passende LED wirklich leuchtet – falsche Drücke erhöhen den Error-Count.  
-- Je schwieriger der Modus, desto kürzer und unvorhersehbarer die Abstände.  
-
 
 Viel Spaß beim Knacken deiner Bestzeit!
 """

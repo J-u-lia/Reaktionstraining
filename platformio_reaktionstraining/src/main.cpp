@@ -14,9 +14,9 @@ WebServer server(80);  // Webserver auf Port 80
 String resultsJson = "[]";  // Variable um die Ergebnisse im JSON-Format zu speichern
 
 // Liste aller 7 LED-Pins
-const int LED_PINS[7] = {15, 2, 4, 18, 19, 21, 22};
+const int LED_PINS[7] = {15, 2, 4, 16, 17, 5, 19};
 // Liste aller 7 Button-Pins
-const int BTN_PINS[7] = {32, 32, 32, 32, 32, 32, 32};
+const int BTN_PINS[7] = {32, 33, 25, 26, 22, 23, 23};
 
 //const int BTN_PINS[7] = {32, 12, 27, 26, 25, 33, 35};
 
