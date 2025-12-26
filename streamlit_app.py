@@ -8,6 +8,7 @@ import base64 # für Hintergrundbildkodierung
 import numpy as np  # für numerische Operationen
 import altair as alt # für erweiterungen in Diagrammen - interktiv 
 from datetime import date, datetime   # für Alter berechnen und Datum speichern
+import time
 
 # ------------------------------------------------------
 # Hintergrundbild + Overlay
@@ -705,127 +706,194 @@ elif st.session_state.page == "test_start" and st.session_state.user:
     folder = user_folder(user["vorname"], user["nachname"])
     test_folder = os.path.join(folder, "tests")
 
+    st.subheader("Spiel auswählen")
 
-    st.subheader("Reaktionsspiel – Anleitung")
-
-    st.markdown(
-        """
-**Willkommen zum Reaktionsspiel!**  
-Teste deine Reaktionsgeschwindigkeit mit unseren 7 Arcade - Buttons.
-
----
-
-### Spielablauf
-
-**Modus und Dauer wählen:**  
-Du kannst zwischen drei verschiedenen Modi auswählen (z. B. manuell, Ermüdung und Schnelltest – die Modi unterscheiden sich in der Testdauer).  
-
-**Test starten:**  
-Klicke auf den Button „Test starten“ in der Streamlit-App.
-
-**Spielen:**  
-Nach dem Start leuchtet in zufälligen Abständen eine der 7 LEDs auf.  
-Deine Aufgabe: So schnell wie möglich den entsprechenden Button drücken, dessen LED gerade leuchtet.  
-Sobald du richtig drückst, erlischt die LED und kurz darauf leuchtet eine neue (zufällige) LED auf.  
-Der Test läuft so lange, bis die gewählte Zeit abgelaufen ist.
-
-**Ergebnisse:**  
-Nach Ende des Tests werden dir folgende Daten angezeigt:  
-- Schnellste Reaktionszeit  
-- Durchschnittliche Reaktionszeit  
-- Anzahl der korrekten Reaktionen  
-- Error-Count  
-- Weitere Statistiken je nach Modus
-
-Viel Spaß beim Knacken deiner Bestzeit!
-"""
+    game_type = st.radio(
+        "Welches Spiel möchtest du spielen?",
+        ["klassisches Reaktionsspiel", "F1-Start-Simulation"]
     )
-
     st.write("---")
 
+    # wenn der Nutzer das klassische Reaktionsspiel ausgewählt hat dann wird der entsprechende Block ausgeführt
+    if game_type == "klassisches Reaktionsspiel":
+        st.subheader("Reaktionsspiel – Anleitung")
 
-    st.subheader("Reaktionstest - Testmodus auswählen")
+        st.markdown(
+            """
+    **Willkommen zum Reaktionsspiel!**  
+    Teste deine Reaktionsgeschwindigkeit mit unseren 7 Arcade - Buttons.
 
-    # ESTMODUS AUSWÄHLEN:
-    test_modus = st.selectbox(
-        "Wähle den Testmodus:",
-        ["manueller Test (freie Dauer)",
-         "Ermüdungstest (15 Minuten)",
-         "Schnelltest (1 Minute)"]
-    )
+    ---
 
-    # TESTDAUER FESTLEGEN:
-    # wenn der Tetsmodus manuel ist dann kann man die zeeit selber aussuchen, man gibt sie in minuten ein
-    if test_modus == "manueller Test (freie Dauer)":
-        dauer_min = st.number_input(
-            "Testdauer in Minuten eingeben:",
-            min_value = 1,
-            max_value = 60,
-            value = 2,
+    ### Spielablauf
+
+    **Modus und Dauer wählen:**  
+    Du kannst zwischen drei verschiedenen Modi auswählen (z. B. manuell, Ermüdung und Schnelltest – die Modi unterscheiden sich in der Testdauer).  
+
+    **Test starten:**  
+    Klicke auf den Button „Test starten“ in der Streamlit-App.
+
+    **Spielen:**  
+    Nach dem Start leuchtet in zufälligen Abständen eine der 7 LEDs auf.  
+    Deine Aufgabe: So schnell wie möglich den entsprechenden Button drücken, dessen LED gerade leuchtet.  
+    Sobald du richtig drückst, erlischt die LED und kurz darauf leuchtet eine neue (zufällige) LED auf.  
+    Der Test läuft so lange, bis die gewählte Zeit abgelaufen ist.
+
+    **Ergebnisse:**  
+    Nach Ende des Tests werden dir folgende Daten angezeigt:  
+    - Schnellste Reaktionszeit  
+    - Durchschnittliche Reaktionszeit  
+    - Anzahl der korrekten Reaktionen  
+    - Error-Count  
+    - Weitere Statistiken je nach Modus
+
+    Viel Spaß beim Knacken deiner Bestzeit!
+    """
         )
-        # sie muss aber wieder in sec für den esp umgerechnet werden
-        dauer_sec = dauer_min * 60
 
-    # wenn der testmodus Ermüdungstest ist dann wird ein test von 15 min gestartet
-    elif test_modus == "Ermüdungstest (15 Minuten)":
-        dauer_sec = 15 * 60
-        st.info("Der Ermüdungstest dauert **15 Minuten**.")
+        st.write("---")
 
-    # wenn der testmodus Schnelltest ist dann wird ein test von 1 min gestartet
-    elif test_modus == "Schnelltest (1 Minute)":
-        dauer_sec = 60
-        st.info("Der Schnelltest dauert **60 Sekunden**.")
 
-    st.write("---")
+        st.subheader("Reaktionstest - Testmodus auswählen")
 
-    # wenn der start button gedrückt wurde dann wird die run_reaction_test(duration_sec=120) Funktion aufgerufen um den Test durchzuführen und die Ergebnise in result speichern
-    if st.button("Test starten", key="start_test_button"):
-        st.write("Test läuft…")
-        # der Test dauert jetzt solange wie man es vorher durch dauer_sec festgelegt hat
-        results, total_errors = run_reaction_test(duration_sec=dauer_sec)
+        # ESTMODUS AUSWÄHLEN:
+        test_modus = st.selectbox(
+            "Wähle den Testmodus:",
+            ["manueller Test (freie Dauer)",
+            "Ermüdungstest (15 Minuten)",
+            "Schnelltest (1 Minute)"]
+        )
 
-        # zählt die vorhandenen Dateien im tests-Ordner und bestimmt so die nächste Testnummer
-        # ist abegsichtert gegen wenn mal eine Dati gelöscht wurde
-        existing = [f for f in os.listdir(test_folder) if f.startswith("test_")]
-        test_num = len(existing) + 1
+        # TESTDAUER FESTLEGEN:
+        # wenn der Tetsmodus manuel ist dann kann man die zeeit selber aussuchen, man gibt sie in minuten ein
+        if test_modus == "manueller Test (freie Dauer)":
+            dauer_min = st.number_input(
+                "Testdauer in Minuten eingeben:",
+                min_value = 1,
+                max_value = 60,
+                value = 2,
+            )
+            # sie muss aber wieder in sec für den esp umgerechnet werden
+            dauer_sec = dauer_min * 60
 
-        # erzeugt pfad für die neue testdatei
-        path = os.path.join(test_folder, f"test_{test_num}.json")
+        # wenn der testmodus Ermüdungstest ist dann wird ein test von 15 min gestartet
+        elif test_modus == "Ermüdungstest (15 Minuten)":
+            dauer_sec = 15 * 60
+            st.info("Der Ermüdungstest dauert **15 Minuten**.")
+
+        # wenn der testmodus Schnelltest ist dann wird ein test von 1 min gestartet
+        elif test_modus == "Schnelltest (1 Minute)":
+            dauer_sec = 60
+            st.info("Der Schnelltest dauert **60 Sekunden**.")
+
+        st.write("---")
+
+        # wenn der start button gedrückt wurde dann wird die run_reaction_test(duration_sec=120) Funktion aufgerufen um den Test durchzuführen und die Ergebnise in result speichern
+        if st.button("Test starten", key="start_test_button"):
+            st.write("Test läuft…")
+            # der Test dauert jetzt solange wie man es vorher durch dauer_sec festgelegt hat
+            results, total_errors = run_reaction_test(duration_sec=dauer_sec)
+
+            # zählt die vorhandenen Dateien im tests-Ordner und bestimmt so die nächste Testnummer
+            # ist abegsichtert gegen wenn mal eine Dati gelöscht wurde
+            existing = [f for f in os.listdir(test_folder) if f.startswith("test_")]
+            test_num = len(existing) + 1
+
+            # erzeugt pfad für die neue testdatei
+            path = os.path.join(test_folder, f"test_{test_num}.json")
+            
+            # schreibt die results als JSON in die Datei
+            # unterteilt auch davro welchen odus macn ausgewählt hat
+            data_to_save = {
+                "game": "classic",            # speichert Spieltyp
+                "mode": test_modus,           # speichert Testmodus
+                "duration_sec": dauer_sec,    # speichert Dauer
+                "results": results,            # Reaktionsdaten
+                "total_errors": total_errors   # Gesamtfehler
+            }
+
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data_to_save, f, indent=4)
+
+
+
+            st.success(f"Test gespeichert als test_{test_num}.json")
+
+            # wandelt die results in ein pandas DataFrame um und zeigt es in der App an
+            df = pd.DataFrame(results) if results else pd.DataFrame()
+            st.dataframe(df)
+
+            # die total_errors anzahl wird angezeigt
+            st.write(f"Gesamtfehler: {total_errors}")
+
+
+            # berechnet einfache Statistiken anhand der Reaktionszeiten und zeigt sie an
+            # Falls Reaktionszeiten vorhanden → Statistik berechnen
+            if "reaction_ms" in df.columns and not df["reaction_ms"].empty:
+                st.write("Durchschnitt:", round(df["reaction_ms"].mean(), 1), "ms")
+                st.write("Schnellste Reaktion:", df["reaction_ms"].min(), "ms")
+                st.write("Langsamste Reaktion:", df["reaction_ms"].max(), "ms")
+            else:
+                st.info("Keine gültigen Reaktionszeiten vorhanden.")
+
+    if game_type == "F1-Start-Simulation":
+        st.subheader("F1-Start-Simulation")
+        st.markdown(
+        """
+**Ablauf:**
+- Halte beide unteren Buttons gedrückt (Kupplung + Gas)
+- Die Startampel geht an
+- Wenn die Lichter ausgehen:
+  - **Kupplung-Button sofort loslassen**
+  - **Gas-Button gedrückt halten**
+- Deine Reaktionszeit wird gemessen
+        """
+        )
+        st.write("---")
+
+        if st.button("F1-Start durchführen", key="start_f1_test_button"):
+            st.write("Test läuft…")
+
+            start_time = time.time() # Startzeit erfassen
+
+            results, total_errors = run_reaction_test(
+                # es wird keine duration_sec benötigt, da ja der Tets aufhört sobal man reagiert hat
+                game="f1start"   
+            )
+
+            end_time = time.time() # Endzeit erfassen
+            f1test_duration_sec = round(end_time - start_time, 2) # Testdauer berechnen
+
+            # Test speichern (gleiches Schema!)
+            existing = [f for f in os.listdir(test_folder) if f.startswith("test_")]
+            test_num = len(existing) + 1
+
+            path = os.path.join(test_folder, f"test_{test_num}.json")
+
+            data_to_save = {
+                "game": "f1start",
+                "mode": "F1 Start",
+                "duration_sec": f1test_duration_sec,
+                "results": results,
+                "total_errors": total_errors
+            }
+
+            with open(path, "w") as f:
+                json.dump(data_to_save, f, indent=4)
+
+            st.success(f"F1-Start gespeichert als test_{test_num}.json")
+
+            # Ergebnis anzeigen
+            if results and isinstance(results, list) and len(results) > 0 and "reaction_ms" in results[0]:
+                reaction_time = results[0]["reaction_ms"]
+                st.success(f"Deine Startzeit war: {reaction_time} ms")
+            else:
+                st.error("Keine Reaktionszeit gemessen.")
+
+            st.write(f"Gesamtfehler: {total_errors}")
+            st.write(f"Dauer des Tests: {f1test_duration_sec} Sekunden")
+
         
-        # schreibt die results als JSON in die Datei
-        # unterteilt auch davro welchen odus macn ausgewählt hat
-        data_to_save = {
-            "mode": test_modus,           # speichert Testmodus
-            "duration_sec": dauer_sec,    # speichert Dauer
-            "results": results,            # Reaktionsdaten
-            "total_errors": total_errors   # Gesamtfehler
-        }
-
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data_to_save, f, indent=4)
-
-
-
-        st.success(f"Test gespeichert als test_{test_num}.json")
-
-        # wandelt die results in ein pandas DataFrame um und zeigt es in der App an
-        df = pd.DataFrame(results) if results else pd.DataFrame()
-        st.dataframe(df)
-
-        # die total_errors anzahl wird angezeigt
-        st.write(f"Gesamtfehler: {total_errors}")
-
-
-        # berechnet einfache Statistiken anhand der Reaktionszeiten und zeigt sie an
-        # Falls Reaktionszeiten vorhanden → Statistik berechnen
-        if "reaction_ms" in df.columns and not df["reaction_ms"].empty:
-            st.write("Durchschnitt:", round(df["reaction_ms"].mean(), 1), "ms")
-            st.write("Schnellste Reaktion:", df["reaction_ms"].min(), "ms")
-            st.write("Langsamste Reaktion:", df["reaction_ms"].max(), "ms")
-        else:
-            st.info("Keine gültigen Reaktionszeiten vorhanden.")
-
-
 
 # wenn Seite test_history und Nutzer eingeloggt dann das
 elif st.session_state.page == "test_history" and st.session_state.user:
@@ -857,29 +925,56 @@ elif st.session_state.page == "test_history" and st.session_state.user:
             with open(os.path.join(test_folder, selected_test)) as f:
                 data = json.load(f)
 
-            st.write(f"**Details zu {selected_test}**")
-
-            # der modus und die dauer werden angezeigt:
-            st.write(f"**Modus:** {data['mode']}")
-            st.write(f"**Dauer:** {data['duration_sec']} Sekunden")
+                game_type = data.get("game", "classic")
+                if game_type == "classic":
+                    game_label = "Klassisches Reaktionsspiel"
+                elif game_type == "f1start":
+                    game_label = "F1-Start-Simulation"
+                else:
+                    game_label = game_type
+                    
 
             # es wird das df results eingelkesen
             results = data.get("results", [])
+            total_errors = data.get("total_errors", 0)
+
+            st.write(f"**Spieltyp:** {game_label}")
+            st.write(f"**Modus:** {data['mode']}")
+            st.write(f"**Dauer:** {data['duration_sec']} Sekunden")
+            st.write("---")
+            
+            
             df = pd.DataFrame(results) if results else pd.DataFrame()
 
-            st.dataframe(df)
+            if data['game'] == "f1start":                
+                if total_errors > 0:
+                    st.error("Fehlstart!")
+                else:
+                    st.success("Sauberer Start!")
+
+                if results and "reaction_ms" in results[0]:
+                    st.write(f"Deine Startreaktionszeit: **{results[0]['reaction_ms']} ms**")
+                else:
+                    st.info("Keine gültigen Reaktionszeiten vorhanden.")
+            
+
+            elif data['game'] == "classic":
+                st.dataframe(df)
+                # Gesamtfehleranzahl anzeigen
+                st.write(f"Gesamtfehler: {data.get('total_errors', 0)}")
+
+                # Optionale Statistiken
+                # wenn die spalte reactrion_ms vorhanden ist dann werden einige werte berechnet 
+                if "reaction_ms" in df.columns and not df["reaction_ms"].empty:
+                    st.write("Durchschnitt:", round(df["reaction_ms"].mean(), 1), "ms")
+                    st.write("Schnellste Reaktion:", df["reaction_ms"].min(), "ms")
+                    st.write("Langsamste Reaktion:", df["reaction_ms"].max(), "ms")
+                else:
+                    st.info("Keine gültigen Reaktionszeiten vorhanden.")
 
 
-            # Gesamtfehleranzahl anzeigen
-            st.write(f"Gesamtfehler: {data.get('total_errors', 0)}")
+            
 
 
-            # Optionale Statistiken
-            # wenn die spalte reactrion_ms vorhanden ist dann werden einige werte berechnet 
-            if "reaction_ms" in df.columns and not df["reaction_ms"].empty:
-                st.write("Durchschnitt:", round(df["reaction_ms"].mean(), 1), "ms")
-                st.write("Schnellste Reaktion:", df["reaction_ms"].min(), "ms")
-                st.write("Langsamste Reaktion:", df["reaction_ms"].max(), "ms")
-            else:
-                st.info("Keine gültigen Reaktionszeiten vorhanden.")
+            
 
