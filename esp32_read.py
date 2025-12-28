@@ -27,14 +27,16 @@ def run_reaction_test(duration_sec=120, mode="Standard", game="classic"): #stand
         timeout=3  # maximale wartezeit - falls esp bis dahin nicht antwortet dann wird ein fehler ausgelöst
     )
 
-    # speichert aktuelle uhrzeit um die laufzeit des tests zu kontrollieren
+    # speichert aktuelle uhrzeit um die laufzeit des tests zu kontrollieren (float)
     start_time = time.time()
     # Variable für gesamtfehleranzahl
     total_errors = 0
 
-    # solange die testdauer nicht überschritten ist also der test noch läuft
+    # wenn das klassiche Spiel läuft dann hat der Test eine feste Testdauer und wird zeitloch beendet
     if game != "f1start":
+        # aktuelle Zeit
         start_time = time.time()
+        # solange die testdauer nicht überschritten ist also der test noch läuft
         while time.time() - start_time < duration_sec:
             # eine art Fehler-Schutzblock also falls das WLAn mal kurz weg ist dann stürzt das programm nicth ab
             try:
@@ -50,12 +52,13 @@ def run_reaction_test(duration_sec=120, mode="Standard", game="classic"): #stand
                 pass
 
             time.sleep(0.2)  # schützt vor zu vielen anfragen in kurzer zeit
-        
+            # quasi doppelte Sicherheit flls test classic und zeit übrschrietten ist dann solls test beenden 
             # es soll nur bei spielen die nicht f1start sind die Maximaldauer beachten
             if game != "f1start" and (time.time() - start_time > duration_sec):
                 requests.get(f"http://{ESP_IP}/stop", timeout=3)
                 break  # Test ist beendet
     else:
+        # also falls f1start ist
         while True:
             # eine art Fehler-Schutzblock also falls das WLAn mal kurz weg ist dann stürzt das programm nicth ab
             try:
