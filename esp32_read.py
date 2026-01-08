@@ -7,7 +7,7 @@ import time     # Zeitmessungen und Testdauer kontrollieren
 # das WiFi.softAP() nutzt immer standardmäßig diese IP:
 ESP_IP = "192.168.4.1"
 
-def run_reaction_test(duration_sec=120, mode="Standard", game="classic"): #standardmäßig ine testdauer von 120 s also 2 min und der Testmodus auf Standard
+def run_reaction_test(duration_sec=120, game="classic"): #standardmäßig ine testdauer von 120 s also 2 min und der Testmodus auf Standard
     """
     Startet den Reaktionstest über WLAN
     und liest währenddessen Status & Fehler aus

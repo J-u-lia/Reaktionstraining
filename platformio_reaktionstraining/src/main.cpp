@@ -78,7 +78,7 @@ unsigned long f1LightsOutTime = 0;  // Zeitpunkt wann Lichter ausehen
 int f1LedIndex = 0;
 
 // einmal alle setup Funktionen aufrufen bevor der eigentliche Code im loop() startet
-#// Vorwärtsdeklarationen der HTTP-Handler-Funktionen
+// Vorwärtsdeklarationen der HTTP-Handler-Funktionen
 void handleStart();
 void handleStop();
 void handleStatus();
