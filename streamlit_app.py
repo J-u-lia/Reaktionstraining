@@ -69,7 +69,7 @@ def add_bg_with_overlay(image_file, darkness=0.5):
 
 # die Funktion aufrufen und ausführen mit dem gewünschten Bild und der Dunkelheit
 add_bg_with_overlay(
-    "C:/Users/famro/git/Reaktionsspiel/Reaktionstraining/Titelbild.jpg",
+    os.path.join(os.path.dirname(__file__), "Titelbild.jpg"),
     darkness=0.7   # je höher der Wert desto dunkler das Overlay
 )
 
