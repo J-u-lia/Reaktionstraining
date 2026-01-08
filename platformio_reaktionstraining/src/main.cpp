@@ -27,7 +27,7 @@ unsigned long ledStartTime[7] = {0,0,0,0,0,0,0};
 
 
 // unsigned long: 4Byte speicher und einen wertebreich von 0 bis 4294967295
-// weil long heißt 4byte von -2147483648 bis +2.147483647 
+// weil long heißt 4byte von -2147483648 bis +2147483647 
 // und unsigned heißt keine negativeb Zahlen dann addiert man es einf ins positive Bereich dazu
 // unsigned ist praktischm, da z.b die zeit millis() immer pos ist
 
@@ -56,10 +56,11 @@ GameMode currentGame = GAME_NONE;
 
 // Button-Indizes (unten links / unten rechts)
 const int SHIFT_BTN = 22;  // Schaltwippen so quasi
+const int SHIFT_LED_PIN = 5;
 const int F1_LED_PINS[5] = {15, 2, 4, 16, 17};
 
-// LED-Indizes (oben + mitte)
-const int F1_LED_COUNT = 5; // 2 oben + 3 mitte
+// LED-Indizes (mitte + unten)
+const int F1_LED_COUNT = 5; // 3 mitte + 2 unten
 
 // State-machine - jeder Zustand eine Phase vom F1-Start Spiel
 enum F1State {
@@ -79,6 +80,8 @@ int f1LedIndex = 0;
 
 // einmal alle setup Funktionen aufrufen bevor der eigentliche Code im loop() startet
 // Vorwärtsdeklarationen der HTTP-Handler-Funktionen
+// code läuft von oben nach unten - bei Zeile server.on("/start", handleStart); muss er bereits wissen was handlestart ist
+// werden nicht ausgeführt nur vorher deklariert
 void handleStart();
 void handleStop();
 void handleStatus();
@@ -151,6 +154,7 @@ void setup() {
     Serial.print("IP Adresse: ");
     Serial.println(WiFi.softAPIP());  // IP-Adresse des Access Points ausgeben
 
+    // server.on(URL, Funktion) - wenn eine Anfrage auf dem URL kommt dann diese Funktion aufrrufen
     server.on("/start", handleStart);  // Test starten; liest Spielmodus, Dauer und setzt alles zurück, startet Countdown und Test
     server.on("/stop", handleStop);   // Test stoppen; setzt testRunning auf false
     server.on("/status", handleStatus);   // Status und fehler zurück geben
@@ -180,6 +184,7 @@ void handleStart() {
 
     // streamlit sendet z.B /start?duration=120000 und ESP32 liest dann die Dauer stezt den Teststart und die Fehler zurück
     // es gibt nur eine Testdauer wenn das klassische Reaktionsspiel gespielt wird
+    // es wird die Zahl von duration als string geholt und die dann als int umgewandelt
     if (server.hasArg("duration") && currentGame == GAME_CLASSIC) {
         TEST_DURATION = server.arg("duration").toInt();
     }
@@ -206,6 +211,10 @@ void handleStart() {
     // ein Endpoint ist eine feste Adresse (URL) auf Gerät/Server - darüber können bestimmte Aktionen ausgeführt werden oder Daten abefragt
     // ist also wie der definiterte Zugangspunkt an dem eine Anfrage ankommt
     // der ESP hat 4 endpoints: /start; /stop; /status; /game;
+
+    // sendet HTTP-Antwort an den Cient der die Anfrage geschickt hat zurückt 
+    // 200 ist HTTP Statuscode also das ok ist, 404 wäre nicht gefunden und 500 serverfehler
+    // das application/json ist content type - also dass es json sind die daten damit der Browser also Streamlit weis wie man die Dtane interpretieren muss
     server.send(200, "application/json", "{\"status\":\"started\", \"game\":\"" + String(currentGame) + "\"}");
 }
 
@@ -229,7 +238,7 @@ void handleStatus() {
 void handleResults() {
     String json = resultsJson;
 
-    // Array sauber schließen, falss mans vergessen hat wirds da gemacht
+    // Array sauber schließen, fals mans vergessen hat wirds da gemacht
     if (json.startsWith("[") && !json.endsWith("]")) {
         json += "]";
     }
@@ -323,6 +332,13 @@ void runF1StartGame() {
     // einlesen von der Schaltwippe ob sie gedrückt ist also Low heißt gedrückt 
     // lesbarer wie ständig digitalRead(..)
     bool shiftPressed = digitalRead(SHIFT_BTN) == LOW; // Schaltwippen
+
+    // Immer wenn das F1-Spiel läuft und noch kein Fehler/keine Reaktion
+    if (f1State != F1_FALSE_START && f1State != F1_REACTION_DONE) {
+        digitalWrite(SHIFT_LED_PIN, HIGH); // LED leuchtet
+    }
+
+
     // je nachdem welcher aktuelle Zustand wird genau einer der cases ausgeführt
     switch (f1State) {
         // aktuelle Zustand = F1_WAIT_START
@@ -339,7 +355,7 @@ void runF1StartGame() {
         // LEDs gehen nacheinander an
         case F1_LIGHT_SEQUENCE:
         // schauen ob die Schaltwippe gedrückt wurde -->
-            // Fehlstart: Kupplung zu früh losgelassen
+            // Fehlstart: zu früh gedrückt
             if (shiftPressed) {
                 // in Zustand Fehlstart wechseln
                 f1State = F1_FALSE_START;
@@ -363,7 +379,7 @@ void runF1StartGame() {
         // Alle LEDs an - warten bis sie aus gehen
         case F1_LIGHTS_ON:
             // Kupplung loslassen = Reaktion
-            // wenn man sie aber jetzt loslast ist Fehlstart
+            // wenn man sie aber jetzt drückt ist Fehlstart
             if (shiftPressed) {
                 f1State = F1_FALSE_START;
                 break;
@@ -383,6 +399,9 @@ void runF1StartGame() {
         case F1_LIGHTS_OUT:
         // jetzt den buttn drücken
             if (shiftPressed) {
+                // die shift led ausmachen 
+                digitalWrite(SHIFT_LED_PIN, LOW);
+
                 // reaktionszeit berechnen und in results speichern 
                 unsigned long reaction = millis() - f1LightsOutTime;
 
@@ -399,7 +418,8 @@ void runF1StartGame() {
             break;
         // aktuelle Zustand = F1_FALSE_START
         case F1_FALSE_START:
-        // errorcoutn erhöhen und den dann auch speichern und sobalt man falösch gedrückt hat soll der Test stoppen
+            digitalWrite(SHIFT_LED_PIN, LOW);
+            // errorcoutn erhöhen und den dann auch speichern und sobalt man falösch gedrückt hat soll der Test stoppen
             errorCount++;
             resultsJson = "[{\"error\":\"false_start\"}]";
             testRunning = false;

@@ -841,12 +841,9 @@ elif st.session_state.page == "test_start" and st.session_state.user:
         st.markdown(
         """
 **Ablauf:**
-- Halte beide unteren Buttons gedrückt (Kupplung + Gas)
-- Die Startampel geht an
-- Wenn die Lichter ausgehen:
-  - **Kupplung-Button sofort loslassen**
-  - **Gas-Button gedrückt halten**
-- Deine Reaktionszeit wird gemessen
+- Die Startampel geht an und der dafür vorgesehene Button leuchtet von Anfang an.
+- Wenn die Lichter ausgehen, drücke diesen Button so schnell wie möglich.
+- Deine Reaktionszeit wird gemessen!
         """
         )
         st.write("---")
