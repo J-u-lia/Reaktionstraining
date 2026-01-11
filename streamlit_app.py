@@ -196,7 +196,7 @@ def user_folder(vorname, nachname):
     # os.path.join verbindet die Teile zu einem gültigen Pfad und ist für betriebssystem-unabhängige Pfade wichtig
     return os.path.join(BASE_DIR, f"{nachname.lower()}_{vorname.lower()}")
 
-def save_user_profile(vorname, nachname, geburtsdatum, geschlecht):
+def save_user_profile(vorname, nachname, geburtsdatum, geschlecht, avatar="Driver_1.png"):
     '''Funktion um ein Nutzerprofil zu speichern
     vorname: Vorname des Nutzers
     nachname: Nachname des Nutzers
@@ -218,7 +218,8 @@ def save_user_profile(vorname, nachname, geburtsdatum, geschlecht):
         "nachname": nachname,
         "alter": alter,
         "geburtsdatum": geburtsdatum.isoformat(),
-        "geschlecht": geschlecht
+        "geschlecht": geschlecht,
+        "avatar": avatar
     }
 
     # öffnet die Datei profil.json im Nutzerodner und speichert das profil als JSON mit Einrückungen von 4 Leerzeichen
@@ -310,6 +311,12 @@ def load_best_reaction_time_of_user(user):
 
     return best
 
+def image_to_base64(path):
+    with open(path, "rb") as img_file:
+        return base64.b64encode(img_file.read()).decode()
+
+if "img_nonce" not in st.session_state:
+    st.session_state.img_nonce = time.time()
 
 # ------------------------------------------------------
 # LOGIN-DIALOG
@@ -365,6 +372,63 @@ def register_dialog():
     geschlecht: Auswahlfeld für Geschlecht
     Registrieren bestätigen Button speichert das Nutzerprofil und lädt es in den Session-State
     '''
+    # --- Profilbild auswählen ---
+    st.markdown("### Wähle ein Profilbild")
+
+    avatars = os.listdir("avatars")
+
+    # Session-State für ausgewählten Avatar und Galerie-Flag
+    if "reg_selected_avatar" not in st.session_state:
+        st.session_state.reg_selected_avatar = avatars[0]
+    if "reg_show_gallery" not in st.session_state:
+        st.session_state.reg_show_gallery = False
+
+    # -------- Avatar-Vorschau, klickbar --------
+    avatar_path = os.path.join("avatars", st.session_state.reg_selected_avatar)
+
+    # Klickbar machen, Button unsichtbar
+    if st.button("", key="reg_avatar_preview"):
+        st.session_state.reg_show_gallery = not st.session_state.reg_show_gallery
+
+    st.markdown("### Ausgewählter Avatar")
+
+    st.image(
+        avatar_path,
+        width=120,
+        caption="Klicken zum Ändern"
+    )
+
+    if st.button("Avatar ändern"):
+        st.session_state.reg_show_gallery = not st.session_state.reg_show_gallery
+
+
+
+    # -------- Galerie anzeigen, falls show_gallery True --------
+    # Galerie anzeigen
+    if st.session_state.reg_show_gallery:
+        st.markdown("#### Wähle einen Avatar")
+
+        cols = st.columns(5)  # 5 Avatare pro Reihe
+
+        for i, avatar in enumerate(avatars):
+            avatar_path = os.path.join("avatars", avatar)
+
+            with cols[i % 5]:
+                # klickbares Kästchen simulieren
+                selected = st.session_state.reg_selected_avatar == avatar
+                button_label = "✅" if selected else ""  # Häkchen wenn ausgewählt
+
+                # st.button für Klick, Bild daneben
+                if st.button(button_label, key=f"reg_avatar_{avatar}"):
+                    st.session_state.reg_selected_avatar = avatar
+                    st.session_state.reg_show_gallery = False
+                    st.rerun()
+
+                # Avatarbild anzeigen (nur Bild, kein Text)
+                st.image(avatar_path, width=60)
+
+
+
     # Eingabefelder für Vorname, Nachname, Alter und Geschlecht mit dem entsprechenden Key für eindeutige Session-State-Bindings
     vor = st.text_input("Vorname", key="reg_vor")
     nach = st.text_input("Nachname", key="reg_nach")
@@ -383,9 +447,12 @@ def register_dialog():
 
     # button zur bestätigung der Registrierung und dann das Profil durch safe_user_profil speichern 
     if st.button("Registrierung bestätigen", key="register_confirm"):
-        save_user_profile(vor, nach, geburtsdatum, geschlecht)
-        st.success("Registrierung erfolgreich!")
+        save_user_profile(
+            vor, nach, geburtsdatum, geschlecht,
+            avatar=st.session_state.reg_selected_avatar
+        )
         # läd das gerade erstellte Profil und setzt user, schließt Dialog und rerun() die APP damit der neu eingeloggte Zustand angezeigt wird
+        st.success("Registrierung erfolgreich!")
         st.session_state.user = load_user(vor, nach)
         st.session_state.active_dialog = None
         st.rerun()
@@ -402,44 +469,76 @@ with header_left:
     st.markdown("<h1 style='color:white;'>Reaktionstestsystem</h1>", unsafe_allow_html=True)
 
 # die rechte spalte ist ein popover Menü für Profilaktionen (Anmelden, Registrieren, Profil anzeigen, Test starten, Tests anzeigen, Abmelden)
-with header_right:
-    with st.popover("Profil"):
-        # wenn kein Nutzer in session_state.user ist dann werde due buttons Anmedlen und Registreiren angezeigt
-        # beim anklicken wird active_dialog entsprechend gesetzt und die App neu geladen
-        if st.session_state.user is None:
-            # Nicht eingeloggt
-            if st.button("Anmelden", key="popover_login"):
-                st.session_state.active_dialog = "login"
-                st.rerun()
+# ------------------------------------------------------
+# SIDEBAR MENÜ (Buttons statt Popover)
+# ------------------------------------------------------
+with st.sidebar:
+    st.header("Navigation")
 
-            if st.button("Registrieren", key="popover_register"):
-                st.session_state.active_dialog = "register"
-                st.rerun()
-        # wenn jemand eingeloggt ist dann sind 4 buttons zum auswählen verfügbar
-        # profilinformationen - setut die seite auf profile
-        # neuen test starten - setzt die seite auf test_start
-        # bisherige tests - setzt die seite auf test_history
-        # Startseite - setzt die seite auf home und lädt die app neu
-        # abmelden - setzt user auf None, page auf home und lädt die App neu
-        else:
-            # Eingeloggt
-            if st.button("Profilinformationen", key="profile_info_btn"):
-                st.session_state.page = "profile"
+    # -------------------------------------------------
+    # PROFILBEREICH (NUR WENN EINGELOGGT)
+    # -------------------------------------------------
+    if st.session_state.user:
+        avatar_file = st.session_state.user.get("avatar", "Driver_1.png")
+        avatar_path = os.path.join("avatars", avatar_file)
+        avatar_base64 = image_to_base64(avatar_path)
 
-            if st.button("Neuen Test starten", key="start_test_menu"):
-                st.session_state.page = "test_start"
+        html = (
+            f'<div style="display:flex;align-items:center;gap:10px;margin-bottom:15px;">'
+            f'<div style="width:42px;height:42px;border-radius:50%;background:white;'
+            f'display:flex;align-items:center;justify-content:center;">'
+            f'<img src="data:image/png;base64,{avatar_base64}" '
+            f'style="max-width:30px;max-height:30px;object-fit:contain;"></div>'
+            f'<span style="color:white;font-weight:600;font-size:16px;">'
+            f'{st.session_state.user["vorname"]}</span>'
+            f'</div>'
+        )
 
-            if st.button("Bisherige Tests", key="previous_tests_menu"):
-                st.session_state.page = "test_history"
+        st.markdown(html, unsafe_allow_html=True)
+        st.write("---")
 
-            if st.button("Startseite", key="startseite_menu_btn"):
-                st.session_state.page = "home"
-                st.rerun()       
+    # -------------------------------------------------
+    # NAVIGATION
+    # -------------------------------------------------
+    if st.button("🏠 Home"):
+        st.session_state.page = "home"
+        st.rerun()
 
-            if st.button("Abmelden", key="logout_btn"):
-                st.session_state.user = None
-                st.session_state.page = "home"
-                st.rerun()
+    if st.session_state.user:
+        if st.button("🎮 Neuer Test"):
+            st.session_state.page = "test_start"
+            st.rerun()
+
+        if st.button("📜 Bisherige Tests"):
+            st.session_state.page = "test_history"
+            st.rerun()
+
+        if st.button("👤 Profil"):
+            st.session_state.page = "profile"
+            st.rerun()
+
+        st.write("---")
+
+        # -------------------------------------------------
+        # ABMELDEN (NUR WENN EINGELOGGT)
+        # -------------------------------------------------
+        if st.button("🚪 Abmelden"):
+            st.session_state.user = None
+            st.session_state.page = "home"
+            st.rerun()
+
+
+
+
+    else:
+        # Login/Register Buttons sichtbar wenn nicht eingeloggt
+        if st.button("🔑 Anmelden"):
+            st.session_state.active_dialog = "login"
+            st.rerun()
+        if st.button("✍️ Registrieren"):
+            st.session_state.active_dialog = "register"
+            st.rerun()
+
 
 
 
@@ -516,13 +615,22 @@ if st.session_state.page == "home":
             })
 
             # Linien-Chart mit Altair erstellen mit den Daten aus curve_df
-            line = alt.Chart(curve_df).mark_line(   # durch marek_line wird ein Liniendiagramm erstellt
-                interpolate="monotone",  # glättet die Kurve dass sie fließend aussieht
-                color="white"       # die linie wird weiß gefärbt
-            ).encode(   # definiert dei achsen
-                x=alt.X("reaction_ms:Q", title="Reaktionszeit (ms)"),   # die x achse sind die reaktionszeiten in ms (q sagt quantitative x-achse)
-                y=alt.Y("count:Q", title="Häufigkeit")               # die y achse ist die anzahl der vorkommnisse in jedem bin
+            # Speed-Kategorie hinzufügen - speed ist für die Farbe
+            curve_df["speed"] = np.where(curve_df["reaction_ms"] <= 250, "schnell", "langsam")
+
+            # Farben definieren
+            color_scale = alt.Scale(
+                domain=["schnell", "langsam"],
+                range=["green", "red"]
             )
+
+            # Linie nach Farbe einfärben
+            line = alt.Chart(curve_df).mark_line(interpolate="monotone").encode(
+                x=alt.X("reaction_ms:Q", title="Reaktionszeit (ms)"),
+                y=alt.Y("count:Q", title="Häufigkeit"),
+                color=alt.Color("speed:N", scale=color_scale, legend=None)  # kein Legenden-Label
+            )
+
 
             # das liniendiagramm wird in einer variable chart gepsuechert damit man später einen kreis für den nutzer hinzuzufügen kann
             chart = line
@@ -549,7 +657,7 @@ if st.session_state.page == "home":
                     # einen roten kreis im diagramm für die nutzerzeit erstellen
                     point = alt.Chart(user_df).mark_point(
                         size=120,
-                        color="red"
+                        color="blue"
                     ).encode( # koordinaten aus dem dataframe
                         x="reaction_ms:Q",
                         y="count:Q"
@@ -602,41 +710,127 @@ if st.session_state.page == "home":
 elif st.session_state.page == "profile" and st.session_state.user:
     user = st.session_state.user
 
-    st.subheader("Profilinformationen")
-
     # -------------------------
     # ANZEIGE-MODUS
     # -------------------------
     if not st.session_state.edit_profile:
+        st.subheader("Profilinformationen")
+        avatar_file = user.get("avatar", "Driver_1.png")
+        avatar_path = os.path.join("avatars", avatar_file)
+        avatar_b64 = image_to_base64(avatar_path)
 
-        left, right = st.columns([3, 1])
+        st.markdown(
+            f"""
+            <div style="
+                width:180px;
+                height:180px;
+                border-radius:50%;
+                background:white;
+                margin:auto;
+                display:flex;
+                align-items:center;
+                justify-content:center;
+            ">
+                <img src="data:image/png;base64,{avatar_b64}"
+                    style="
+                        width:130px;
+                        height:130px;
+                        object-fit:contain;
+                    ">
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
-        with left:
-            birthdate = datetime.fromisoformat(user["geburtsdatum"]).date()
-
-            st.markdown(
-                f"""
-            **Vorname:** {user['vorname']}  
-            **Nachname:** {user['nachname']}  
-            **Geburtsdatum:** {birthdate.strftime('%d.%m.%Y')}  
-            **Alter:** {user['alter']} Jahre  
-            **Geschlecht:** {user['geschlecht']}
-            """
-            )
 
 
-        with right:
-            st.write("")  
-            st.write("")  
-            if st.button("Profil bearbeiten"):
-                st.session_state.edit_profile = True
-                st.rerun()
+
+
+        birthdate = datetime.fromisoformat(user["geburtsdatum"]).date()
+
+        col_l, col_r = st.columns(2)
+
+        with col_l:
+            st.markdown(f"**Vorname:** {user['vorname']}")
+            st.markdown(f"**Geburtsdatum:** {birthdate.strftime('%d.%m.%Y')}")
+            st.markdown(f"**Geschlecht:** {user['geschlecht']}")
+
+        with col_r:
+            st.markdown(f"**Nachname:** {user['nachname']}")
+            st.markdown(f"**Alter:** {user['alter']} Jahre")
+
+        st.write("")
+
+        if st.button("Profil bearbeiten"):
+            st.session_state.edit_profile = True
+            st.session_state.selected_avatar = st.session_state.user.get("avatar", "Driver_1.png")
+            st.session_state.show_gallery = False
+            st.rerun()
+
+
+
 
     # -------------------------
     # BEARBEITUNGS-MODUS
     # -------------------------
     else:
         st.markdown("### Profil bearbeiten")
+
+        # -------- Avatar ändern --------
+        avatars = os.listdir("avatars")
+
+        if "show_gallery" not in st.session_state:
+            st.session_state.show_gallery = False
+
+        # Vorschau klickbar
+        avatar_path = os.path.join("avatars", st.session_state.selected_avatar)
+        if st.button("", key="profile_avatar_preview"):
+            st.session_state.show_gallery = not st.session_state.show_gallery
+
+        st.markdown(
+            f"""
+            <div style="text-align:center; margin-bottom:15px; cursor:pointer;">
+                <div style="
+                    width:140px;
+                    height:140px;
+                    margin:auto;
+                    border-radius:50%;
+                    background:white;
+                    display:flex;
+                    align-items:center;
+                    justify-content:center;
+                ">
+                    <img src="data:image/png;base64,{image_to_base64(avatar_path)}"
+                        style="max-width:100px; max-height:100px; object-fit:contain;">
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+
+        # Galerie
+        if st.session_state.show_gallery:
+            st.markdown("### Wähle ein Avatar")
+
+            cols = st.columns(5)  # 5 Avatare pro Reihe
+
+            for i, avatar in enumerate(avatars):
+                avatar_path = os.path.join("avatars", avatar)
+
+                with cols[i % 5]:
+                    # prüfen ob Avatar ausgewählt ist
+                    selected = st.session_state.selected_avatar == avatar
+                    button_label = "✅" if selected else ""
+
+                    # Klick auf Avatar
+                    if st.button(button_label, key=f"profile_avatar_{avatar}"):
+                        st.session_state.selected_avatar = avatar
+                        st.session_state.show_gallery = False
+                        st.rerun()
+
+                    # Avatar anzeigen
+                    st.image(avatar_path, width=60)
+
 
         new_vorname = st.text_input(
             "Vorname",
@@ -667,48 +861,41 @@ elif st.session_state.page == "profile" and st.session_state.user:
         )
 
         col_save, col_cancel = st.columns(2)
-
+        # --- Änderungen speichern ---
         with col_save:
             if st.button("Änderungen speichern"):
-
-                # Profil-Daten neu bauen
                 updated_profile = {
                     "vorname": new_vorname,
                     "nachname": new_nachname,
                     "geburtsdatum": new_birthdate.isoformat(),
                     "alter": new_alter,
-                    "geschlecht": new_geschlecht
+                    "geschlecht": new_geschlecht,
+                    "avatar": st.session_state.selected_avatar
                 }
 
-                # alter und neuer Ordnername
-                old_folder = user_folder(
-                    user["vorname"],
-                    user["nachname"]
-                )
-                new_folder = user_folder(
-                    new_vorname,
-                    new_nachname
-                )
+                old_folder = user_folder(user["vorname"], user["nachname"])
+                new_folder = user_folder(new_vorname, new_nachname)
 
-                # Ordner umbenennen, falls Name geändert wurde
                 if old_folder != new_folder:
                     os.rename(old_folder, new_folder)
 
-                # Profil im (neuen) Ordner speichern
                 with open(os.path.join(new_folder, "profil.json"), "w") as f:
                     json.dump(updated_profile, f, indent=4)
 
-                # Session-State aktualisieren
-                st.session_state.user = updated_profile
+                # Session-State aktualisieren, damit Vorschau sofort das neue Bild zeigt
+                st.session_state.user = load_user(new_vorname, new_nachname)
                 st.session_state.edit_profile = False
+                st.session_state.show_gallery = False  # Galerie schließen
 
                 st.success("Profil aktualisiert")
                 st.rerun()
+
 
         with col_cancel:
             if st.button("Abbrechen"):
                 st.session_state.edit_profile = False
                 st.rerun()
+
 
 
 

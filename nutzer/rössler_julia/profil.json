@@ -1,7 +1,8 @@
 {
     "vorname": "Julia",
     "nachname": "R\u00f6ssler",
-    "alter": 19,
     "geburtsdatum": "2006-09-06",
-    "geschlecht": "weiblich"
+    "alter": 19,
+    "geschlecht": "weiblich",
+    "avatar": "Driver_7.png"
 }
