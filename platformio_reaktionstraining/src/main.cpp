@@ -46,7 +46,8 @@ int errorCount = 0;   // Fehler: Button gedrückt obwohl LED aus/Fehlstart bei F
 enum GameMode {
     GAME_NONE,
     GAME_CLASSIC,
-    GAME_F1START
+    GAME_F1START,
+    GAME_MEMORY
 };
 
 // speichert aktuell aktiven Spielmodus
@@ -77,6 +78,28 @@ F1State f1State = F1_WAIT_START;
 unsigned long f1StepTime = 0;  // Timing der LED-Schritte
 unsigned long f1LightsOutTime = 0;  // Zeitpunkt wann Lichter ausehen
 int f1LedIndex = 0;
+
+// -------- Memory Variablen ----------
+// Maximale Länge der Merksequenz - define legt eine Konstante fest
+#define MEMORY_MAX_LEN 50 
+
+int memorySequence[MEMORY_MAX_LEN];  // Array zur Speicherung der Merksequenz
+int memoryLength = 1;  // aktuelle Länge der Sequenz
+int userIndex = 0;   // Index für die Benutzereingabe
+
+bool showingSequence = true;   // ob gerade die Sequenz gezeigt wird
+unsigned long lastStepTime = 0;     // Zeitpunkt der letzten Aktion
+int showIndex = 0;     // Index für die angezeigte LED in der Sequenz
+
+enum MemoryState {
+    MEM_SHOW_SEQUENCE,
+    MEM_WAIT_INPUT,
+    MEM_SUCCESS,
+    MEM_FAIL
+};
+
+MemoryState memState = MEM_SHOW_SEQUENCE;
+
 
 // einmal alle setup Funktionen aufrufen bevor der eigentliche Code im loop() startet
 // Vorwärtsdeklarationen der HTTP-Handler-Funktionen
@@ -175,6 +198,7 @@ void handleStart() {
         String g = server.arg("game");
         if (g == "classic") currentGame = GAME_CLASSIC;
         else if (g == "f1start") currentGame = GAME_F1START;
+        else if (g == "memory") currentGame = GAME_MEMORY;
         // Standardmodus Classic
         else currentGame = GAME_CLASSIC;
     }
@@ -193,6 +217,12 @@ void handleStart() {
     resultsJson = "[]";   // alte Ergebnisse löschen
     errorCount = 0;
 
+    memoryLength = 1;
+    memorySequence[0] = random(0, 7);
+    showIndex = 0;
+    userIndex = 0;
+    lastStepTime = millis();
+
     // LEDs aus - damit kann sichergestellt werden dass vor dem Countdown alle aus sind
     for (int i = 0; i < 7; i++) {
         digitalWrite(LED_PINS[i], LOW);
@@ -203,6 +233,8 @@ void handleStart() {
 
     // F1-Reset
     f1State = F1_WAIT_START;
+    // Memory Reset
+    memState = MEM_SHOW_SEQUENCE;
 
     testRunning = true;
     testStartTime = millis();  // Zeitpunkt merken wann Test gestartet wurde
@@ -433,6 +465,84 @@ void runF1StartGame() {
     }
 }
 
+void runMemoryGame() {
+    static unsigned long buttonLastPress = 0;
+    static bool ledOn = false;
+
+    // -------- SEQUENZ ANZEIGEN --------
+    if (memState == MEM_SHOW_SEQUENCE) {
+
+        // LED einschalten
+        if (!ledOn && millis() - lastStepTime > 600) {
+            digitalWrite(LED_PINS[memorySequence[showIndex]], HIGH);
+            ledOn = true;
+            lastStepTime = millis();
+        }
+
+        // LED wieder ausschalten
+        if (ledOn && millis() - lastStepTime > 200) {
+            digitalWrite(LED_PINS[memorySequence[showIndex]], LOW);
+            ledOn = false;
+            showIndex++;
+            lastStepTime = millis();
+
+            // Sequenz fertig angezeigt
+            if (showIndex >= memoryLength) {
+                showIndex = 0;
+                userIndex = 0;
+                memState = MEM_WAIT_INPUT;
+            }
+        }
+    }
+
+    // -------- AUF BENUTZER EINGABE WARTEN --------
+    else if (memState == MEM_WAIT_INPUT) {
+        for (int i = 0; i < 7; i++) {
+            if (digitalRead(BTN_PINS[i]) == LOW) {
+
+                // Entprellung
+                if (millis() - buttonLastPress < 200) return;
+                buttonLastPress = millis();
+
+                // Richtiger Button?
+                if (i == memorySequence[userIndex]) {
+                    userIndex++;
+
+                    // Ganze Sequenz korrekt
+                    if (userIndex >= memoryLength) {
+                        memState = MEM_SUCCESS;
+                    }
+                }
+                else {
+                    memState = MEM_FAIL;
+                }
+                break; // nur EIN Button pro Durchlauf
+            }
+        }
+    }
+
+    // -------- ERFOLG --------
+    else if (memState == MEM_SUCCESS) {
+        if (memoryLength < MEMORY_MAX_LEN) {
+            memorySequence[memoryLength] = random(0, 7);
+            memoryLength++;
+        }
+
+        showIndex = 0;
+        userIndex = 0;
+        lastStepTime = millis();
+        memState = MEM_SHOW_SEQUENCE;
+    }
+
+    // -------- FEHLER / SPIEL ENDE --------
+    else if (memState == MEM_FAIL) {
+        errorCount++;
+        resultsJson = "[{\"level\":" + String(memoryLength - 1) + "}]";
+        testRunning = false;
+    }
+}
+
+
 void loop() {
     // Webserver Anfragen bearbeiten - ohne das reagiert der ESP32 nicht auf HTTP-Anfragen
     // prüft ständig ob eine Anfrage kam, welcher URL und ruft dann die passende Funktion auf
@@ -472,9 +582,13 @@ void loop() {
             case GAME_CLASSIC:
                 runClassicGame();
                 break;
-            // wenn F1Start läuft dann die andere
+            // wenn F1Start läuft dann die F1 funktion aufrufen
             case GAME_F1START:
                 runF1StartGame();
+                break;
+            // wenn Memory läuft dann die Memory Funktion aufrufen
+            case GAME_MEMORY:
+                runMemoryGame();
                 break;
             // falls es einen unerwarteten Wert gibt für den Modus dann gar nichts soll passieren
             default:

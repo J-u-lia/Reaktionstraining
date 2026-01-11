@@ -670,11 +670,8 @@ elif st.session_state.page == "profile" and st.session_state.user:
 
         with col_save:
             if st.button("Änderungen speichern"):
-                folder = user_folder(
-                    user["vorname"],
-                    user["nachname"]
-                )
 
+                # Profil-Daten neu bauen
                 updated_profile = {
                     "vorname": new_vorname,
                     "nachname": new_nachname,
@@ -683,12 +680,28 @@ elif st.session_state.page == "profile" and st.session_state.user:
                     "geschlecht": new_geschlecht
                 }
 
-                with open(os.path.join(folder, "profil.json"), "w") as f:
+                # alter und neuer Ordnername
+                old_folder = user_folder(
+                    user["vorname"],
+                    user["nachname"]
+                )
+                new_folder = user_folder(
+                    new_vorname,
+                    new_nachname
+                )
+
+                # Ordner umbenennen, falls Name geändert wurde
+                if old_folder != new_folder:
+                    os.rename(old_folder, new_folder)
+
+                # Profil im (neuen) Ordner speichern
+                with open(os.path.join(new_folder, "profil.json"), "w") as f:
                     json.dump(updated_profile, f, indent=4)
 
                 # Session-State aktualisieren
                 st.session_state.user = updated_profile
                 st.session_state.edit_profile = False
+
                 st.success("Profil aktualisiert")
                 st.rerun()
 
@@ -696,6 +709,7 @@ elif st.session_state.page == "profile" and st.session_state.user:
             if st.button("Abbrechen"):
                 st.session_state.edit_profile = False
                 st.rerun()
+
 
 
 
@@ -710,7 +724,7 @@ elif st.session_state.page == "test_start" and st.session_state.user:
 
     game_type = st.radio(
         "Welches Spiel möchtest du spielen?",
-        ["klassisches Reaktionsspiel", "F1-Start-Simulation"]
+        ["klassisches Reaktionsspiel", "F1-Start-Simulation", "Memory-Game"]
     )
     st.write("---")
 
@@ -765,7 +779,7 @@ elif st.session_state.page == "test_start" and st.session_state.user:
         )
 
         # TESTDAUER FESTLEGEN:
-        # wenn der Tetsmodus manuel ist dann kann man die zeeit selber aussuchen, man gibt sie in minuten ein
+        # wenn der Tetsmodus manuel ist dann kann man die zeit selber aussuchen, man gibt sie in minuten ein
         if test_modus == "manueller Test (freie Dauer)":
             dauer_min = st.number_input(
                 "Testdauer in Minuten eingeben:",
@@ -890,7 +904,42 @@ elif st.session_state.page == "test_start" and st.session_state.user:
             st.write(f"Gesamtfehler: {total_errors}")
             st.write(f"Dauer des Tests: {f1test_duration_sec} Sekunden")
 
-        
+    if game_type == "Memory-Game":
+        st.subheader("Memory-Game")
+        st.markdown("""
+        **Ablauf:**
+        - Merke dir die LED-Reihenfolge
+        - Drücke sie in der gleichen Reihenfolge nach
+        - Nach jeder Runde wird die Sequenz länger
+        - Das Spiel endet beim ersten Fehler
+        """)
+
+        if st.button("Memory-Game starten"):
+            st.write("Spiel läuft…")
+
+            results, total_errors = run_reaction_test(game="memory")
+
+            existing = [f for f in os.listdir(test_folder) if f.startswith("test_")]
+            test_num = len(existing) + 1
+
+            path = os.path.join(test_folder, f"test_{test_num}.json")
+
+            data_to_save = {
+                "game": "memory",
+                "mode": "Memory",
+                "duration_sec": None,
+                "results": results,
+                "total_errors": total_errors
+            }
+
+            with open(path, "w") as f:
+                json.dump(data_to_save, f, indent=4)
+
+            st.success(f"Memory-Game gespeichert als test_{test_num}.json")
+
+            if results and "level" in results[0]:
+                st.write(f"Erreichtes Level: **{results[0]['level']}**")
+
 
 # wenn Seite test_history und Nutzer eingeloggt dann das
 elif st.session_state.page == "test_history" and st.session_state.user:
@@ -927,6 +976,8 @@ elif st.session_state.page == "test_history" and st.session_state.user:
                     game_label = "Klassisches Reaktionsspiel"
                 elif game_type == "f1start":
                     game_label = "F1-Start-Simulation"
+                elif game_type == "memory":
+                    game_label = "Memory-Game"
                 else:
                     game_label = game_type
                     
@@ -937,7 +988,12 @@ elif st.session_state.page == "test_history" and st.session_state.user:
 
             st.write(f"**Spieltyp:** {game_label}")
             st.write(f"**Modus:** {data['mode']}")
-            st.write(f"**Dauer:** {data['duration_sec']} Sekunden")
+            
+            if data["duration_sec"] is not None:
+                st.write(f"**Dauer:** {data['duration_sec']} Sekunden")
+            else:
+                st.write("**Dauer:** spielabhängig")
+
             st.write("---")
             
             
@@ -969,6 +1025,11 @@ elif st.session_state.page == "test_history" and st.session_state.user:
                 else:
                     st.info("Keine gültigen Reaktionszeiten vorhanden.")
 
+            elif data['game'] == "memory":
+                if results and "level" in results[0]:
+                    st.success(f"Erreichtes Memory-Level: {results[0]['level']}")
+                else:
+                    st.info("Kein gültiges Memory-Ergebnis vorhanden.")
 
             
 
