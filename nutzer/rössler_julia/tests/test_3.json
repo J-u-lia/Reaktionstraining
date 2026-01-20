@@ -1,0 +1,11 @@
+{
+    "game": "memory",
+    "mode": "Memory",
+    "duration_sec": null,
+    "results": [
+        {
+            "level": 1
+        }
+    ],
+    "total_errors": 1
+}

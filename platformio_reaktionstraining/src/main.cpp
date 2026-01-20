@@ -15,9 +15,10 @@ WebServer server(80);  // Webserver auf Port 80
 String resultsJson = "[]";  // Variable um die Ergebnisse im JSON-Format zu speichern
 
 // Liste aller 7 LED-Pins
-const int LED_PINS[7] = {15, 2, 4, 16, 17, 5, 19};
+// rot, rot, rot, grün, grün, blau, blau
+const int LED_PINS[7] = {15, 2, 4, 16, 17, 5, 18};
 // Liste aller 7 Button-Pins
-const int BTN_PINS[7] = {32, 33, 25, 26, 22, 23, 23};
+const int BTN_PINS[7] = {32, 33, 25, 26, 27, 22, 23};
 
 //const int BTN_PINS[7] = {32, 12, 27, 26, 25, 33, 35};
 
@@ -56,9 +57,9 @@ GameMode currentGame = GAME_NONE;
 // -------- F1 START VARIABLEN ----------
 
 // Button-Indizes (unten links / unten rechts)
-const int SHIFT_BTN = 22;  // Schaltwippen so quasi
-const int SHIFT_LED_PIN = 5;
-const int F1_LED_PINS[5] = {15, 2, 4, 16, 17};
+const int SHIFT_BTN = 23;  // Schaltwippen so quasi
+const int SHIFT_LED_PIN = 18;
+const int F1_LED_PINS[5] = {2, 16, 15, 17, 4};
 
 // LED-Indizes (mitte + unten)
 const int F1_LED_COUNT = 5; // 3 mitte + 2 unten

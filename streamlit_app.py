@@ -247,7 +247,7 @@ def load_user(vorname, nachname):
     return None
 
 
-def load_best_reaction_times(base_dir="nutzer"):
+def load_best_reaction_times(base_dir="nutzer", game_type = None):
     '''Funktion die alle Testdateien aller Nutzer ladet und von jedem Nutzer die besten Reaktionszeiten heraussucht
     base_dir: Basisordner in dem die Nutzerordner liegen
     return: Liste mit den besten Reaktionszeiten aller Nutzer
@@ -278,12 +278,29 @@ def load_best_reaction_times(base_dir="nutzer"):
                     for r in data.get("results", [])
                     if "reaction_ms" in r
                 ]
+
+                # ----------------------------
+                # SPIELTYP FILTERN
+                # ----------------------------
+                if game_type is not None:
+                    if data.get("game") != game_type:
+                        continue
+
+                reactions = [
+                    r["reaction_ms"]
+                    for r in data.get("results", [])
+                    if "reaction_ms" in r
+                ]
+
+                if reactions:
+                    best_times.append(min(reactions))
+
                 # wenn reaktionszeiten gefunden wurden, wird die beste (minimum) in die best_times liste aufgenommen
                 if reactions:
                     best_times.append(min(reactions))  # nur die beste Zeit
     return best_times
 
-def load_best_reaction_time_of_user(user):
+def load_best_reaction_time_of_user(user, game_type = None):
     '''Funktion die die beste Reaktionszeit vom akutell eingeloggten Nutzer holt. Bracuht man um die im gesamtn Diagramm sichtabr zu machen
     user: Nutzerprofil als dict
     return: beste Reaktionszeit des Nutzers in ms oder None wenn keine Tests vorhanden'''
@@ -301,6 +318,14 @@ def load_best_reaction_time_of_user(user):
         if file.endswith(".json"):
             with open(os.path.join(test_dir, file), "r") as f:
                 data = json.load(f)
+
+             # ----------------------------
+            # SPIELTYP FILTERN
+            # ----------------------------
+            if game_type is not None:
+                if data.get("game") != game_type:
+                    continue
+
             # aus den geladenen daten wird die beste reaktionszeit gesucht aus der liste der ergebnisse
             for r in data.get("results", []):
                 # wenn eine reaktionszeit gefunden wurde, wird sie mit der bisher besten verglichen und ggf. aktualisiert wenn sie kleiner ist wie die aktuelle
@@ -310,6 +335,86 @@ def load_best_reaction_time_of_user(user):
                         best = val
 
     return best
+
+def load_memory_highscores(base_dir="nutzer"):
+    """
+    Lädt die besten Memory-Highscores aller Nutzer
+    
+    return:
+        Liste mit Memory-Levels (int),
+        z.B. [3, 5, 7, 7, 10]
+    """
+    highscores = []
+
+    if not os.path.exists(base_dir):
+        return highscores
+
+    for user_folder_name in os.listdir(base_dir):
+        user_dir = os.path.join(base_dir, user_folder_name)
+        test_dir = os.path.join(user_dir, "tests")
+
+        if not os.path.isdir(test_dir):
+            continue
+
+        max_level = None
+
+        for file in os.listdir(test_dir):
+            if not file.endswith(".json"):
+                continue
+
+            with open(os.path.join(test_dir, file), "r") as f:
+                data = json.load(f)
+
+            # Nur Memory-Games
+            if data.get("game") != "memory":
+                continue
+
+            results = data.get("results", [])
+            if results and "level" in results[0]:
+                level = results[0]["level"]
+                if max_level is None or level > max_level:
+                    max_level = level
+
+        # Pro Nutzer genau EIN Highscore
+        if max_level is not None:
+            highscores.append(max_level)
+
+    return highscores
+
+
+def load_memory_highscore_of_user(user):
+    """
+    Ermittelt das höchste erreichte Memory-Level eines Nutzers
+    user: Nutzerprofil (dict)
+    return: max Level (int) oder None
+    """
+    folder = user_folder(user["vorname"], user["nachname"])
+    test_dir = os.path.join(folder, "tests")
+
+    if not os.path.exists(test_dir):
+        return None
+
+    max_level = None
+
+    for file in os.listdir(test_dir):
+        if not file.endswith(".json"):
+            continue
+
+        with open(os.path.join(test_dir, file), "r") as f:
+            data = json.load(f)
+
+        # Nur Memory-Games berücksichtigen
+        if data.get("game") != "memory":
+            continue
+
+        results = data.get("results", [])
+        if results and "level" in results[0]:
+            level = results[0]["level"]
+            if max_level is None or level > max_level:
+                max_level = level
+
+    return max_level
+
 
 def image_to_base64(path):
     with open(path, "rb") as img_file:
@@ -561,148 +666,432 @@ elif st.session_state.active_dialog == "register":
 #      - lade die besten Reaktionszeiten aller Nutzer und zeige sie in einem Diagramm an
 #      - macht zwei spalten links und rechts für das Diagramm und den erklärtext 
 if st.session_state.page == "home":
-    # kurzer erklärungstext zur App
-    st.markdown(
-        """
-        <p style="
-            color: white;
-            font-size: 1.2rem;
-            max-width: 900px;
-            margin-bottom: 40px;
-        ">
-            Sobald eine LED aufleuchtet, drücke den zugehörigen Button so schnell wie möglich.
-            Dieses System misst deine Reaktionszeit und Fehlerquote in Echtzeit.
-        </p>
-        """,
-        unsafe_allow_html=True
-    )
+
+    tab_classic, tab_f1, tab_memory = st.tabs([
+        "🎯 Klassisches Reaktionsspiel",
+        "🏎️ F1-Start-Simulation",
+        "🧠 Memory-Game"
+    ])
+
+    with tab_classic:
+
+        # zuerst alle besten Reaktionszeiten aller Nutzer laden
+        reaction_times = load_best_reaction_times(game_type="classic")
+        st.markdown("### Klassisches Reaktionsspiel")
+
+        # kurzer erklärungstext zur App
+        st.markdown(
+            """
+            <p style="
+                color: white;
+                font-size: 1.2rem;
+                max-width: 900px;
+                margin-bottom: 40px;
+            ">
+                Sobald eine LED aufleuchtet, drücke den zugehörigen Button so schnell wie möglich.
+                Dieses System misst deine Reaktionszeit und Fehlerquote in Echtzeit.
+            </p>
+            """,
+            unsafe_allow_html=True
+        )
     
-    # zuerst alle besten Reaktionszeiten aller Nutzer laden
-    reaction_times = load_best_reaction_times()
-
-    # wenn reaktionszeiten vorhanden sind, wird das diagramm und der erklärtext angezeigt
-    if reaction_times:
-        # dataframe aus den reaktionszeiten erstellen und dann den mittelwert aus den daten berechnen für den erklärtext 
-        df = pd.DataFrame(reaction_times, columns=["reaction_ms"])
-        avg = df["reaction_ms"].mean()
-
-        # zwei spalten erstellen für linke seite diagramm und rechte seite erklärtext
-        col_left, col_right = st.columns([1.2, 1])
-
-        # ------------------------
-        # LINKE SPALTE: KURVE + SPÄTER USER-PUNKT
-        # ------------------------
-        with col_left:
-            # wenn jemand angemeldet ist dann wird die unterüberschrift angepasst
-            if st.session_state.user:
-                st.subheader("Deine Reaktionszeit im Vergleich")
-            else:
-                st.subheader("Verteilung der schnellsten Reaktionszeiten")
-
-            # HISTOGRAMM -> LINIEN CHART MIT ALTAR
-
-            # durch np.histogram() wird ein Histogramm auf den Daten df["reaction_ms"] erstellt
-            # die 25 bins teilt den wertebereich von den reaktionszeiten in 25 gleich große Intervalle auf
-            # es werden counts (Anzahö der werte in jedem bin) und bin_edges (die grenzwerte der bins) zurückgegeben
-            counts, bin_edges = np.histogram(df["reaction_ms"], bins=25)
-            # berechnet die mittelpunkte der Bins
-            # er nimmt alle linken Ränder (bin_edges[:-1]) und addiert sie zu den rechten Rändern (bin_edges[1:]) und teilt durch 2
-            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
-            # erstellt jetzt das DataFrame das die Histogrammdaten speichert - reaction_ms sind die x-Werter und counts sind die y-Werte
-            curve_df = pd.DataFrame({
-                "reaction_ms": bin_centers,
-                "count": counts
-            })
-
-            # Linien-Chart mit Altair erstellen mit den Daten aus curve_df
-            # Speed-Kategorie hinzufügen - speed ist für die Farbe
-            curve_df["speed"] = np.where(curve_df["reaction_ms"] <= 250, "schnell", "langsam")
-
-            # Farben definieren
-            color_scale = alt.Scale(
-                domain=["schnell", "langsam"],
-                range=["green", "red"]
-            )
-
-            # Linie nach Farbe einfärben
-            line = alt.Chart(curve_df).mark_line(interpolate="monotone").encode(
-                x=alt.X("reaction_ms:Q", title="Reaktionszeit (ms)"),
-                y=alt.Y("count:Q", title="Häufigkeit"),
-                color=alt.Color("speed:N", scale=color_scale, legend=None)  # kein Legenden-Label
-            )
 
 
-            # das liniendiagramm wird in einer variable chart gepsuechert damit man später einen kreis für den nutzer hinzuzufügen kann
-            chart = line
+        # wenn reaktionszeiten vorhanden sind, wird das diagramm und der erklärtext angezeigt
+        if reaction_times:
+            # dataframe aus den reaktionszeiten erstellen und dann den mittelwert aus den daten berechnen für den erklärtext 
+            df = pd.DataFrame(reaction_times, columns=["reaction_ms"])
+            avg = df["reaction_ms"].mean()
 
-            # prüfen ob ein nutzer eingeloggt ist oder nicht
-            if st.session_state.user:
-                # die beste reaktionszeit des nutzers aus der datenbank oder Datei laden
-                best_user_time = load_best_reaction_time_of_user(
-                    st.session_state.user
+            # zwei spalten erstellen für linke seite diagramm und rechte seite erklärtext
+            col_left, col_right = st.columns([1.2, 1])
+
+            # ------------------------
+            # LINKE SPALTE: KURVE + SPÄTER USER-PUNKT
+            # ------------------------
+            with col_left:
+                # wenn jemand angemeldet ist dann wird die unterüberschrift angepasst
+                if st.session_state.user:
+                    st.subheader("Deine Reaktionszeit im Vergleich")
+                else:
+                    st.subheader("Verteilung der schnellsten Reaktionszeiten")
+
+                # HISTOGRAMM -> LINIEN CHART MIT ALTAR
+
+                # durch np.histogram() wird ein Histogramm auf den Daten df["reaction_ms"] erstellt
+                # die 25 bins teilt den wertebereich von den reaktionszeiten in 25 gleich große Intervalle auf
+                # es werden counts (Anzahö der werte in jedem bin) und bin_edges (die grenzwerte der bins) zurückgegeben
+                counts, bin_edges = np.histogram(df["reaction_ms"], bins=25)
+                # berechnet die mittelpunkte der Bins
+                # er nimmt alle linken Ränder (bin_edges[:-1]) und addiert sie zu den rechten Rändern (bin_edges[1:]) und teilt durch 2
+                bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+                # erstellt jetzt das DataFrame das die Histogrammdaten speichert - reaction_ms sind die x-Werter und counts sind die y-Werte
+                curve_df = pd.DataFrame({
+                    "reaction_ms": bin_centers,
+                    "count": counts
+                })
+
+                # Linien-Chart mit Altair erstellen mit den Daten aus curve_df
+                # Speed-Kategorie hinzufügen - speed ist für die Farbe
+                curve_df["speed"] = np.where(curve_df["reaction_ms"] <= 250, "schnell", "langsam")
+
+                # Farben definieren
+                color_scale = alt.Scale(
+                    domain=["schnell", "langsam"],
+                    range=["green", "red"]
                 )
-                # wenn eine beste zeit vorhanden ist, wird ein punkt im diagramm hinzugefügt
-                if best_user_time is not None:
-                    # es wird die differenz zwischen nutzerzeit und allen Bin-Mittelpunkten ermittelt über das np.abs
-                    # das .argmin() gibt den index des minimalen werts zurück also den bin der am nächsten an der nutzerzeit liegt
-                    idx = np.abs(bin_centers - best_user_time).argmin()
-                    # dann wird die häufigkeit für diesen bin angegeben
-                    y_val = counts[idx]
 
-                    # ein dataframe für den kreis des nutzers erstellen
-                    user_df = pd.DataFrame({
-                        "reaction_ms": [best_user_time],
-                        "count": [y_val]
-                    })
-                    # einen roten kreis im diagramm für die nutzerzeit erstellen
-                    point = alt.Chart(user_df).mark_point(
-                        size=120,
-                        color="blue"
-                    ).encode( # koordinaten aus dem dataframe
-                        x="reaction_ms:Q",
-                        y="count:Q"
+                # Linie nach Farbe einfärben
+                line = alt.Chart(curve_df).mark_line(interpolate="monotone").encode(
+                    x=alt.X("reaction_ms:Q", title="Reaktionszeit (ms)"),
+                    y=alt.Y("count:Q", title="Häufigkeit"),
+                    color=alt.Color("speed:N", scale=color_scale, legend=None)  # kein Legenden-Label
+                )
+
+
+                # das liniendiagramm wird in einer variable chart gepsuechert damit man später einen kreis für den nutzer hinzuzufügen kann
+                chart = line
+
+                # prüfen ob ein nutzer eingeloggt ist oder nicht
+                if st.session_state.user:
+                    # die beste reaktionszeit des nutzers aus der datenbank oder Datei laden
+                    best_user_time = load_best_reaction_time_of_user(
+                        st.session_state.user,
+                        game_type="classic"
                     )
-                    # die linie und den punkt überlagern damit man di elinie und die beste zeit vom nutzer sieht
-                    chart = line + point
-            # das diagramm in der app anzeigen mit use_container_width=True damit es die ganze spaltenbreite nutzt
-            st.altair_chart(chart, use_container_width=True)
+                    # wenn eine beste zeit vorhanden ist, wird ein punkt im diagramm hinzugefügt
+                    if best_user_time is not None:
+                        # es wird die differenz zwischen nutzerzeit und allen Bin-Mittelpunkten ermittelt über das np.abs
+                        # das .argmin() gibt den index des minimalen werts zurück also den bin der am nächsten an der nutzerzeit liegt
+                        idx = np.abs(bin_centers - best_user_time).argmin()
+                        # dann wird die häufigkeit für diesen bin angegeben
+                        y_val = counts[idx]
 
-        # ---------------------------------
-        # RECHTE SPALTE: BESCHREIBUNGSTEXT
-        # ---------------------------------
-        with col_right:
-            # auf der rechten seite wird wenn man im user satet ist also wenn jemand ngemeldet ist dann der text mit dem nutzerergebnis angezeigt
-            if st.session_state.user:
-                best_user_time = load_best_reaction_time_of_user(
-                    st.session_state.user
+                        # ein dataframe für den kreis des nutzers erstellen
+                        user_df = pd.DataFrame({
+                            "reaction_ms": [best_user_time],
+                            "count": [y_val]
+                        })
+                        # einen roten kreis im diagramm für die nutzerzeit erstellen
+                        point = alt.Chart(user_df).mark_point(
+                            size=120,
+                            color="blue"
+                        ).encode( # koordinaten aus dem dataframe
+                            x="reaction_ms:Q",
+                            y="count:Q"
+                        )
+                        # die linie und den punkt überlagern damit man di elinie und die beste zeit vom nutzer sieht
+                        chart = line + point
+                # das diagramm in der app anzeigen mit use_container_width=True damit es die ganze spaltenbreite nutzt
+                st.altair_chart(chart, use_container_width=True)
+
+            # ---------------------------------
+            # RECHTE SPALTE: BESCHREIBUNGSTEXT
+            # ---------------------------------
+            with col_right:
+                # auf der rechten seite wird wenn man im user satet ist also wenn jemand ngemeldet ist dann der text mit dem nutzerergebnis angezeigt
+                if st.session_state.user:
+                    best_user_time = load_best_reaction_time_of_user(
+                        st.session_state.user
+                    )
+
+                    st.markdown(
+                        f"""
+            ### Dein Ergebnis
+
+            Deine **beste Reaktionszeit** liegt bei  
+            **{best_user_time} ms**.
+
+            Der rote Punkt im Diagramm zeigt,
+            wo du im Vergleich zu allen anderen liegst.
+            """
+                    )
+                # wenn niemand angemeldet ist dann wird der allgemeine erklärtext angezeigt
+                else:
+                    st.markdown(
+                        f"""
+            ### Über den Test
+
+            Der Reaktionstest ist eine der einfachsten Möglichkeiten,  
+            die menschliche Reaktionszeit objektiv zu überprüfen.
+
+            Die **durchschnittliche Reaktionszeit** aller Teilnehmer  
+            liegt bei **{avg:.1f} ms**.
+            """
+                    )
+
+    with tab_f1:
+
+        # -----------------------------
+        # DATEN LADEN (NUR F1-START)
+        # -----------------------------
+        f1_times = load_best_reaction_times(game_type="f1start")
+        st.markdown("### F1-Start-Simulation")
+
+        # kurzer erklärungstext zur App
+        st.markdown(
+            """
+            <p style="
+                color: white;
+                font-size: 1.2rem;
+                max-width: 900px;
+                margin-bottom: 40px;
+            ">
+                Bei der F1-Startsimulation musst du den blau leuchtenden Button genau dann drücken, 
+                wenn die Startampel ausgeht. Ein zu frühes Drücken führt zu einem Fehlstart, 
+                ein zu spätes Drücken verlängert deine Reaktionszeit. 
+                Deine Startreaktion wird in Millisekunden gemessen, damit du sehen kannst, wie schnell du reagierst 
+                und wie du im Vergleich zu anderen abschneidest. 
+                Schnelle Reaktionen sind entscheidend, um die Führung beim Rennstart zu übernehmen.
+            </p>
+            """
+            ,
+            unsafe_allow_html=True
+        )
+
+        if f1_times:
+
+            df = pd.DataFrame(f1_times, columns=["reaction_ms"])
+            avg = df["reaction_ms"].mean()
+
+            col_left, col_right = st.columns([1.2, 1])
+
+            # =============================
+            # LINKE SPALTE – DIAGRAMM
+            # =============================
+            with col_left:
+
+                if st.session_state.user:
+                    st.subheader("Deine Startreaktion im Vergleich")
+                else:
+                    st.subheader("Verteilung der Startreaktionszeiten")
+
+                # Histogramm berechnen
+                counts, bin_edges = np.histogram(df["reaction_ms"], bins=25)
+                bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+
+                curve_df = pd.DataFrame({
+                    "reaction_ms": bin_centers,
+                    "count": counts
+                })
+
+                # Einfache Kategorie für Farbverlauf
+                curve_df["speed"] = np.where(
+                    curve_df["reaction_ms"] <= 200,
+                    "schnell",
+                    "langsam"
                 )
 
-                st.markdown(
-                    f"""
-        ### Dein Ergebnis
-
-        Deine **beste Reaktionszeit** liegt bei  
-        **{best_user_time} ms**.
-
-        Der rote Punkt im Diagramm zeigt,
-        wo du im Vergleich zu allen anderen liegst.
-        """
-                )
-            # wenn niemand angemeldet ist dann wird der allgemeine erklärtext angezeigt
-            else:
-                st.markdown(
-                    f"""
-        ### Über den Test
-
-        Der Reaktionstest ist eine der einfachsten Möglichkeiten,  
-        die menschliche Reaktionszeit objektiv zu überprüfen.
-
-        Die **durchschnittliche Reaktionszeit** aller Teilnehmer  
-        liegt bei **{avg:.1f} ms**.
-        """
+                color_scale = alt.Scale(
+                    domain=["schnell", "langsam"],
+                    range=["green", "red"]
                 )
 
+                # Linie
+                line = alt.Chart(curve_df).mark_line(
+                    interpolate="monotone"
+                ).encode(
+                    x=alt.X("reaction_ms:Q", title="Startreaktionszeit (ms)"),
+                    y=alt.Y("count:Q", title="Häufigkeit"),
+                    color=alt.Color("speed:N", scale=color_scale, legend=None)
+                )
 
+                chart = line
+
+                # -----------------------------
+                # USER-PUNKT (WENN ANGEMELDET)
+                # -----------------------------
+                if st.session_state.user:
+                    best_user_time = load_best_reaction_time_of_user(
+                        st.session_state.user,
+                        game_type="f1start"
+                    )
+
+                    if best_user_time is not None:
+                        idx = np.abs(bin_centers - best_user_time).argmin()
+                        y_val = counts[idx]
+
+                        user_df = pd.DataFrame({
+                            "reaction_ms": [best_user_time],
+                            "count": [y_val]
+                        })
+
+                        point = alt.Chart(user_df).mark_point(
+                            size=120,
+                            color="blue"
+                        ).encode(
+                            x="reaction_ms:Q",
+                            y="count:Q"
+                        )
+
+                        chart = line + point
+
+                st.altair_chart(chart, use_container_width=True)
+
+            # =============================
+            # RECHTE SPALTE – TEXT
+            # =============================
+            with col_right:
+
+                if st.session_state.user:
+                    best_user_time = load_best_reaction_time_of_user(
+                        st.session_state.user,
+                        game_type="f1start"
+                    )
+
+                    st.markdown(f"""
+    ### Dein Start
+
+    Deine **beste Startreaktionszeit**
+    liegt bei  
+
+    **{best_user_time} ms**.
+
+    Der Punkt im Diagramm zeigt,
+    wie du im Vergleich zu anderen
+    Startern abschneidest.
+    """)
+                else:
+                    st.markdown(f"""
+    ### Reaktionszeit beim Rennstart
+
+    Die **Reaktionszeit eines F1-Fahrers**
+    liegt typischerweise zwischen  
+    **100 und 200 ms**.
+
+    Ein schneller Start kann entscheidend sein,
+    vor allem auf Strecken, auf denen
+    Überholen schwierig ist.
+
+    Die **durchschnittliche Startreaktion**
+    aller Teilnehmer liegt bei  
+    **{avg:.1f} ms**.
+    """)
+
+
+    with tab_memory:
+
+        # -----------------------------
+        # MEMORY-HIGHSCORES LADEN
+        # -----------------------------
+        memory_scores = load_memory_highscores()
+        # erwartet z.B.: [3, 5, 7, 7, 10, 4, 6]
+        st.markdown("### Memory-Game")
+
+        # kurzer erklärungstext zur App
+        st.markdown(
+            """
+            <p style="
+                color: white;
+                font-size: 1.2rem;
+                max-width: 900px;
+                margin-bottom: 40px;
+            ">
+                Bei diesem Memory-Spiel musst du dir die angezeigte LED-Sequenz merken und anschließend die LEDs in der richtigen Reihenfolge nachdrücken. 
+                Wenn du die Sequenz korrekt wiederholst, wird die Sequenz beim nächsten Durchgang länger, sodass sich dein Gedächtnis und deine Konzentration immer weiter verbessern. 
+                Ziel ist es, so viele Level wie möglich zu schaffen und deinen persönlichen Highscore zu übertreffen.
+            </p>
+            """,
+            unsafe_allow_html=True
+        )
+
+
+        if memory_scores:
+
+            col_left, col_right = st.columns([1.2, 1])
+
+            # =============================
+            # LINKE SPALTE – DIAGRAMM
+            # =============================
+            with col_left:
+
+                if st.session_state.user:
+                    st.subheader("Dein Memory-Highscore im Vergleich")
+                else:
+                    st.subheader("Verteilung der Memory-Highscores")
+
+                # Daten vorbereiten
+                df = pd.DataFrame(memory_scores, columns=["level"])
+
+                counts = df["level"].value_counts().sort_index()
+
+                curve_df = pd.DataFrame({
+                    "level": counts.index,
+                    "count": counts.values
+                })
+
+                # Linie erstellen
+                line = alt.Chart(curve_df).mark_line(
+                    interpolate="monotone"
+                ).encode(
+                    x=alt.X("level:Q", title="Erreichtes Level"),
+                    y=alt.Y("count:Q", title="Anzahl Benutzer")
+                )
+
+                chart = line
+
+                # -----------------------------
+                # USER-HIGHSCORE MARKIEREN
+                # -----------------------------
+                if st.session_state.user:
+                    user_best = load_memory_highscore_of_user(
+                        st.session_state.user
+                    )
+
+                    if user_best is not None:
+                        user_count = counts.get(user_best, 0)
+
+                        user_df = pd.DataFrame({
+                            "level": [user_best],
+                            "count": [user_count]
+                        })
+
+                        point = alt.Chart(user_df).mark_point(
+                            size=150,
+                            color="red"
+                        ).encode(
+                            x="level:Q",
+                            y="count:Q"
+                        )
+
+                        chart = line + point
+
+                st.altair_chart(chart, use_container_width=True)
+
+            # =============================
+            # RECHTE SPALTE – TEXT
+            # =============================
+            with col_right:
+
+                if st.session_state.user:
+                    user_best = load_memory_highscore_of_user(
+                        st.session_state.user
+                    )
+
+                    st.markdown(f"""
+    ### Deine Memory-Leistung
+
+    Dein **bester Memory-Highscore**
+    liegt bei  
+
+    **Level {user_best}**.
+
+    Der rote Punkt zeigt,
+    wie du im Vergleich zu anderen
+    Spielern abschneidest.
+    """)
+                else:
+                    st.markdown("""
+    ### Memory-Training
+
+    Das Memory-Spiel trainiert  
+    **Arbeitsgedächtnis, Konzentration
+    und visuelle Wahrnehmung**.
+
+    Regelmäßiges Training kann helfen,
+    die Merkfähigkeit zu verbessern
+    und geistig fit zu bleiben.
+    """)
 
 
 
@@ -1103,8 +1492,9 @@ elif st.session_state.page == "test_start" and st.session_state.user:
 
         if st.button("Memory-Game starten"):
             st.write("Spiel läuft…")
-
+            old_highscore = load_memory_highscore_of_user(st.session_state.user)
             results, total_errors = run_reaction_test(game="memory")
+
 
             existing = [f for f in os.listdir(test_folder) if f.startswith("test_")]
             test_num = len(existing) + 1
@@ -1124,8 +1514,19 @@ elif st.session_state.page == "test_start" and st.session_state.user:
 
             st.success(f"Memory-Game gespeichert als test_{test_num}.json")
 
+            new_level = None
             if results and "level" in results[0]:
-                st.write(f"Erreichtes Level: **{results[0]['level']}**")
+                new_level = results[0]["level"]
+
+            if new_level is not None:
+                if old_highscore is None or new_level > old_highscore:
+                    st.balloons()
+
+                    st.success(
+                        f"🏆 **Gratuliere!**\n\n"
+                        f"Du hast deinen bisherigen Highscore gebrochen!\n\n"
+                        f"**Neuer Highscore:** Level {new_level}"
+                    )
 
 
 # wenn Seite test_history und Nutzer eingeloggt dann das
@@ -1180,6 +1581,14 @@ elif st.session_state.page == "test_history" and st.session_state.user:
                 st.write(f"**Dauer:** {data['duration_sec']} Sekunden")
             else:
                 st.write("**Dauer:** spielabhängig")
+
+            # Highscore nur anzeigen, wenn aktueller Test ein Memory-Game ist
+            if game_type == "memory":
+                memory_highscore = load_memory_highscore_of_user(st.session_state.user)
+
+                if memory_highscore is not None:
+                    st.write(f"**Highscore:** Level {memory_highscore}")
+
 
             st.write("---")
             
