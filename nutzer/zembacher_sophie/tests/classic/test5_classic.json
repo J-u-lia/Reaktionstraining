@@ -1,0 +1,52 @@
+{
+    "game": "classic",
+    "mode": "Schnelltest (20 Sekunden)",
+    "duration_sec": 20,
+    "results": [
+        {
+            "led": 3,
+            "reaction_ms": 835
+        },
+        {
+            "led": 2,
+            "reaction_ms": 423
+        },
+        {
+            "led": 4,
+            "reaction_ms": 523
+        },
+        {
+            "led": 5,
+            "reaction_ms": 311
+        },
+        {
+            "led": 3,
+            "reaction_ms": 533
+        },
+        {
+            "led": 6,
+            "reaction_ms": 423
+        },
+        {
+            "led": 4,
+            "reaction_ms": 424
+        },
+        {
+            "led": 3,
+            "reaction_ms": 533
+        },
+        {
+            "led": 1,
+            "reaction_ms": 421
+        },
+        {
+            "led": 1,
+            "reaction_ms": 312
+        },
+        {
+            "led": 4,
+            "reaction_ms": 532
+        }
+    ],
+    "total_errors": 0
+}

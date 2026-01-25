@@ -14,7 +14,7 @@ def run_reaction_test(duration_sec=120, game="classic"): #standardmäßig ine te
     """
     # rechnet sek in ms um weil der /start endpoint die dauer in ms erwartet
     duration_ms = duration_sec * 1000
-
+    current_level = 1  # Variable für das aktuelle Level (für memory Spielmodus)
     # Test starten - Ausgabe für Debug
     print("Starte Test über WLAN...")
     # es wird eine HTTP-GET Anfrage gesendet mit /start als ESP-Endpoint
@@ -68,6 +68,12 @@ def run_reaction_test(duration_sec=120, game="classic"): #standardmäßig ine te
                 data = r.json()  #antwort in JSOn umwndeln
                 # fehleranzahl aus der Antwort holn
                 total_errors = data.get("errors", total_errors)
+                # Level auslesen
+                current_level = data.get("level", current_level)
+
+
+                # optional: Debug
+                print("Aktuelles Level:", current_level)
                 
                 # prüfen ob der test noch läuft
                 if data.get("running") is False:
@@ -86,5 +92,5 @@ def run_reaction_test(duration_sec=120, game="classic"): #standardmäßig ine te
     except Exception:
         results = []
 
-    return results, total_errors
+    return results, total_errors, current_level
 

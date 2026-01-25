@@ -1,0 +1,11 @@
+{
+    "game": "f1start",
+    "mode": null,
+    "duration_sec": 7.25,
+    "results": [
+        {
+            "reaction_ms": 640
+        }
+    ],
+    "total_errors": 0
+}

@@ -1,9 +1,10 @@
 # IMPORTS
+import requests
 import streamlit as st   # Basisbibliothekl für die Web-App
 import os   # für Dateipfade und Ordneroperationen
 import json  # zum Laden und Speichern von JSON-Dateien
 import pandas as pd  # für Tabellen und Dataframes
-from esp32_read import run_reaction_test   # Funktion um den Reaktionstest durchzuführen
+from esp32_read import ESP_IP, run_reaction_test   # Funktion um den Reaktionstest durchzuführen
 import base64 # für Hintergrundbildkodierung
 import numpy as np  # für numerische Operationen
 import altair as alt # für erweiterungen in Diagrammen - interktiv 
@@ -209,6 +210,16 @@ def save_user_profile(vorname, nachname, geburtsdatum, geschlecht, avatar="Drive
     # er wird im Unterordner tests für Testdateien angelegt
     os.makedirs(os.path.join(folder, "tests"), exist_ok=True)
 
+    # Basis-Testordner
+    test_base = os.path.join(folder, "tests")
+    os.makedirs(test_base, exist_ok=True)
+
+    # Unterordner nach Spieltyp
+    subfolders = ["classic", "f1start", "memory"]
+    for sub in subfolders:
+        os.makedirs(os.path.join(test_base, sub), exist_ok=True)
+
+
     alter = calculate_age(geburtsdatum)
 
     # profildaten die bei Regisrtrierung angegeben werden
@@ -226,6 +237,46 @@ def save_user_profile(vorname, nachname, geburtsdatum, geschlecht, avatar="Drive
     # Profildaten als JSON speichern
     with open(os.path.join(folder, "profil.json"), "w") as f:
         json.dump(profil, f, indent=4)
+
+def save_test_result(user, game_type, results, mode=None, duration_sec=None, total_errors=None):
+    """
+    Speichert ein Testergebnis für einen Nutzer.
+    user: dict mit vorname/nachname
+    game_type: "classic", "f1start", "memory"
+    results: Liste von dicts z.B. [{"reaction_ms": 250}, ...]
+    """
+    folder = user_folder(user["vorname"], user["nachname"])
+    test_dir = os.path.join(folder, "tests", game_type)
+    os.makedirs(test_dir, exist_ok=True)
+
+    # Automatische Nummerierung der Tests
+    existing_files = [f for f in os.listdir(test_dir) if f.endswith(".json")]
+    test_num = len(existing_files) + 1
+    filename = f"test{test_num}_{game_type}.json"
+
+    test_data = {
+        "game": game_type,
+        "mode": mode,
+        "duration_sec": duration_sec,
+        "results": results,
+        "total_errors": total_errors
+    }
+
+    if mode:
+        test_data["mode"] = mode
+    if duration_sec is not None:
+        test_data["duration_sec"] = duration_sec
+    if total_errors is not None:
+        test_data["total_errors"] = total_errors
+
+    file_path = os.path.join(test_dir, filename)
+
+    with open(file_path, "w") as f:
+        json.dump(test_data, f, indent=4)
+
+    return filename
+
+
 
 def load_user(vorname, nachname):
     '''Funktion um ein Nutzerprofil zu laden
@@ -246,45 +297,43 @@ def load_user(vorname, nachname):
     # wenn nicht gefunden, gib None zurück
     return None
 
-
-def load_best_reaction_times(base_dir="nutzer", game_type = None):
+def load_best_reaction_times(base_dir="nutzer", game_type=None):
     '''Funktion die alle Testdateien aller Nutzer ladet und von jedem Nutzer die besten Reaktionszeiten heraussucht
     base_dir: Basisordner in dem die Nutzerordner liegen
     return: Liste mit den besten Reaktionszeiten aller Nutzer
     '''
-    # macht eine leere Liste für die besten Zeiten aller Nutzer
     best_times = []
 
-    # sollte der Basisordner nicht existieren, wird eine leere Liste zurückgegeben
     if not os.path.exists(base_dir):
         return best_times
 
-    # wenn der Basisordner existiert, werden alle Nutzerordner darin durchlaufen
-    for user_folder in os.listdir(base_dir):
-        # es wird ein pfad erstellt zum testordner des jeweiligen nutzers
-        test_dir = os.path.join(base_dir, user_folder, "tests")
-        # wenn nicht vorhanden, wird der nächste Nutzerordner geprüft
-        if not os.path.isdir(test_dir):
-            continue
-        # wenn der testordner existiert, werden alle dateien darin durchlaufen
-        for file in os.listdir(test_dir):
-            # wenn man ein file findet das mit .json endet, wird es geöffnet und die daten geladen
-            if file.endswith(".json"):
-                with open(os.path.join(test_dir, file), "r") as f:
-                    data = json.load(f)
-                # aus den geladenen daten werden alle reaktionszeiten in einer liste gesammelt
-                reactions = [
-                    r["reaction_ms"]
-                    for r in data.get("results", [])
-                    if "reaction_ms" in r
-                ]
+    for user_folder_name in os.listdir(base_dir):
 
-                # ----------------------------
-                # SPIELTYP FILTERN
-                # ----------------------------
-                if game_type is not None:
-                    if data.get("game") != game_type:
-                        continue
+        user_dir = os.path.join(base_dir, user_folder_name)
+        tests_base = os.path.join(user_dir, "tests")
+
+        if not os.path.isdir(tests_base):
+            continue
+
+        # Alle Spielordner durchgehen
+        for game in ["classic", "f1start", "memory"]:
+
+            game_dir = os.path.join(tests_base, game)
+
+            if not os.path.isdir(game_dir):
+                continue
+
+            for file in os.listdir(game_dir):
+
+                if not file.endswith(".json"):
+                    continue
+
+                with open(os.path.join(game_dir, file), "r") as f:
+                    data = json.load(f)
+
+                # Filtern nach Spieltyp
+                if game_type and data.get("game") != game_type:
+                    continue
 
                 reactions = [
                     r["reaction_ms"]
@@ -295,46 +344,50 @@ def load_best_reaction_times(base_dir="nutzer", game_type = None):
                 if reactions:
                     best_times.append(min(reactions))
 
-                # wenn reaktionszeiten gefunden wurden, wird die beste (minimum) in die best_times liste aufgenommen
-                if reactions:
-                    best_times.append(min(reactions))  # nur die beste Zeit
     return best_times
 
-def load_best_reaction_time_of_user(user, game_type = None):
+
+def load_best_reaction_time_of_user(user, game_type=None):
     '''Funktion die die beste Reaktionszeit vom akutell eingeloggten Nutzer holt. Bracuht man um die im gesamtn Diagramm sichtabr zu machen
     user: Nutzerprofil als dict
     return: beste Reaktionszeit des Nutzers in ms oder None wenn keine Tests vorhanden'''
-    # findet den ordner vom aktuellen nutzer und durchsucht alle testdateien nach der besten reaktionszeit
+
     folder = user_folder(user["vorname"], user["nachname"])
-    test_dir = os.path.join(folder, "tests")
-    # wenn der testordner nicht existiert, wird None zurückgegeben
-    if not os.path.exists(test_dir):
+    tests_base = os.path.join(folder, "tests")
+
+    if not os.path.exists(tests_base):
         return None
-     
+
     best = None
-    # wenn ein ordner existiert dann werden alle dateien darin durchlaufen
-    for file in os.listdir(test_dir):
-        # findet man ein file das auf .json endet, wird es geöffnet und die daten geladen
-        if file.endswith(".json"):
-            with open(os.path.join(test_dir, file), "r") as f:
+
+    for game in ["classic", "f1start", "memory"]:
+
+        game_dir = os.path.join(tests_base, game)
+
+        if not os.path.isdir(game_dir):
+            continue
+
+        for file in os.listdir(game_dir):
+
+            if not file.endswith(".json"):
+                continue
+
+            with open(os.path.join(game_dir, file), "r") as f:
                 data = json.load(f)
 
-             # ----------------------------
-            # SPIELTYP FILTERN
-            # ----------------------------
-            if game_type is not None:
-                if data.get("game") != game_type:
-                    continue
+            if game_type and data.get("game") != game_type:
+                continue
 
-            # aus den geladenen daten wird die beste reaktionszeit gesucht aus der liste der ergebnisse
             for r in data.get("results", []):
-                # wenn eine reaktionszeit gefunden wurde, wird sie mit der bisher besten verglichen und ggf. aktualisiert wenn sie kleiner ist wie die aktuelle
                 if "reaction_ms" in r:
+
                     val = r["reaction_ms"]
+
                     if best is None or val < best:
                         best = val
 
     return best
+
 
 def load_memory_highscores(base_dir="nutzer"):
     """
@@ -350,70 +403,68 @@ def load_memory_highscores(base_dir="nutzer"):
         return highscores
 
     for user_folder_name in os.listdir(base_dir):
-        user_dir = os.path.join(base_dir, user_folder_name)
-        test_dir = os.path.join(user_dir, "tests")
 
-        if not os.path.isdir(test_dir):
+        user_dir = os.path.join(base_dir, user_folder_name)
+        memory_dir = os.path.join(user_dir, "tests", "memory")
+
+        if not os.path.isdir(memory_dir):
             continue
 
         max_level = None
 
-        for file in os.listdir(test_dir):
+        for file in os.listdir(memory_dir):
+
             if not file.endswith(".json"):
                 continue
 
-            with open(os.path.join(test_dir, file), "r") as f:
+            with open(os.path.join(memory_dir, file), "r") as f:
                 data = json.load(f)
 
-            # Nur Memory-Games
-            if data.get("game") != "memory":
-                continue
-
             results = data.get("results", [])
+
             if results and "level" in results[0]:
+
                 level = results[0]["level"]
+
                 if max_level is None or level > max_level:
                     max_level = level
 
-        # Pro Nutzer genau EIN Highscore
         if max_level is not None:
             highscores.append(max_level)
 
     return highscores
 
 
-def load_memory_highscore_of_user(user):
-    """
-    Ermittelt das höchste erreichte Memory-Level eines Nutzers
-    user: Nutzerprofil (dict)
-    return: max Level (int) oder None
-    """
-    folder = user_folder(user["vorname"], user["nachname"])
-    test_dir = os.path.join(folder, "tests")
 
-    if not os.path.exists(test_dir):
+def load_memory_highscore_of_user(user):
+
+    folder = user_folder(user["vorname"], user["nachname"])
+    memory_dir = os.path.join(folder, "tests", "memory")
+
+    if not os.path.exists(memory_dir):
         return None
 
     max_level = None
 
-    for file in os.listdir(test_dir):
+    for file in os.listdir(memory_dir):
+
         if not file.endswith(".json"):
             continue
 
-        with open(os.path.join(test_dir, file), "r") as f:
+        with open(os.path.join(memory_dir, file), "r") as f:
             data = json.load(f)
 
-        # Nur Memory-Games berücksichtigen
-        if data.get("game") != "memory":
-            continue
-
         results = data.get("results", [])
+
         if results and "level" in results[0]:
+
             level = results[0]["level"]
+
             if max_level is None or level > max_level:
                 max_level = level
 
     return max_level
+
 
 
 def image_to_base64(path):
@@ -792,7 +843,8 @@ if st.session_state.page == "home":
                 # auf der rechten seite wird wenn man im user satet ist also wenn jemand ngemeldet ist dann der text mit dem nutzerergebnis angezeigt
                 if st.session_state.user:
                     best_user_time = load_best_reaction_time_of_user(
-                        st.session_state.user
+                        st.session_state.user,
+                        game_type="classic"
                     )
 
                     st.markdown(
@@ -866,7 +918,9 @@ if st.session_state.page == "home":
                 else:
                     st.subheader("Verteilung der Startreaktionszeiten")
 
-                # Histogramm berechnen
+                # =============================
+                # HISTOGRAMM BERECHNEN
+                # =============================
                 counts, bin_edges = np.histogram(df["reaction_ms"], bins=25)
                 bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
 
@@ -875,32 +929,44 @@ if st.session_state.page == "home":
                     "count": counts
                 })
 
-                # Einfache Kategorie für Farbverlauf
-                curve_df["speed"] = np.where(
-                    curve_df["reaction_ms"] <= 200,
-                    "schnell",
-                    "langsam"
-                )
+                # =============================
+                # DATEN SPLITTEN (FARBWECHSEL)
+                # =============================
+                # nächster vorhandener Punkt zur Grenze
+                border_x = 210
+                border_idx = np.abs(bin_centers - border_x).argmin()
 
-                color_scale = alt.Scale(
-                    domain=["schnell", "langsam"],
-                    range=["green", "red"]
-                )
+                border_row = curve_df.iloc[[border_idx]]
 
-                # Linie
-                line = alt.Chart(curve_df).mark_line(
-                    interpolate="monotone"
+                fast_df = curve_df[curve_df["reaction_ms"] <= border_row["reaction_ms"].values[0]]
+                slow_df = curve_df[curve_df["reaction_ms"] >= border_row["reaction_ms"].values[0]]
+
+
+                # =============================
+                # LINIE BIS 300 ms (GRÜN)
+                # =============================
+                line_fast = alt.Chart(fast_df).mark_line(
+                    interpolate="monotone",
+                    color="green"
                 ).encode(
                     x=alt.X("reaction_ms:Q", title="Startreaktionszeit (ms)"),
-                    y=alt.Y("count:Q", title="Häufigkeit"),
-                    color=alt.Color("speed:N", scale=color_scale, legend=None)
+                    y=alt.Y("count:Q", title="Häufigkeit")
                 )
 
-                chart = line
+                line_slow = alt.Chart(slow_df).mark_line(
+                    interpolate="monotone",
+                    color="red"
+                ).encode(
+                    x="reaction_ms:Q",
+                    y="count:Q"
+                )
 
-                # -----------------------------
+                chart = line_fast + line_slow
+
+
+                # =============================
                 # USER-PUNKT (WENN ANGEMELDET)
-                # -----------------------------
+                # =============================
                 if st.session_state.user:
                     best_user_time = load_best_reaction_time_of_user(
                         st.session_state.user,
@@ -924,9 +990,13 @@ if st.session_state.page == "home":
                             y="count:Q"
                         )
 
-                        chart = line + point
+                        chart = chart + point
 
+                # =============================
+                # CHART RENDERN
+                # =============================
                 st.altair_chart(chart, use_container_width=True)
+
 
             # =============================
             # RECHTE SPALTE – TEXT
@@ -1293,8 +1363,6 @@ elif st.session_state.page == "profile" and st.session_state.user:
 elif st.session_state.page == "test_start" and st.session_state.user:
     # user ist das eingeloggte Profil, folder der Nutzerordner und test_folder der Pfad zum tests-unterordner
     user = st.session_state.user
-    folder = user_folder(user["vorname"], user["nachname"])
-    test_folder = os.path.join(folder, "tests")
 
     st.subheader("Spiel auswählen")
 
@@ -1351,7 +1419,7 @@ elif st.session_state.page == "test_start" and st.session_state.user:
             "Wähle den Testmodus:",
             ["manueller Test (freie Dauer)",
             "Ermüdungstest (15 Minuten)",
-            "Schnelltest (1 Minute)"]
+            "Schnelltest (20 Sekunden)"]
         )
 
         # TESTDAUER FESTLEGEN:
@@ -1372,9 +1440,9 @@ elif st.session_state.page == "test_start" and st.session_state.user:
             st.info("Der Ermüdungstest dauert **15 Minuten**.")
 
         # wenn der testmodus Schnelltest ist dann wird ein test von 1 min gestartet
-        elif test_modus == "Schnelltest (1 Minute)":
-            dauer_sec = 60
-            st.info("Der Schnelltest dauert **60 Sekunden**.")
+        elif test_modus == "Schnelltest (20 Sekunden)":
+            dauer_sec = 20
+            st.info("Der Schnelltest dauert **20 Sekunden**.")
 
         st.write("---")
 
@@ -1382,32 +1450,15 @@ elif st.session_state.page == "test_start" and st.session_state.user:
         if st.button("Test starten", key="start_test_button"):
             st.write("Test läuft…")
             # der Test dauert jetzt solange wie man es vorher durch dauer_sec festgelegt hat
-            results, total_errors = run_reaction_test(duration_sec=dauer_sec)
+            results, total_errors, current_level = run_reaction_test(duration_sec=dauer_sec)
 
             # zählt die vorhandenen Dateien im tests-Ordner und bestimmt so die nächste Testnummer
             # ist abegsichtert gegen wenn mal eine Dati gelöscht wurde
-            existing = [f for f in os.listdir(test_folder) if f.startswith("test_")]
-            test_num = len(existing) + 1
+            filename = save_test_result(user, "classic", results, mode=test_modus, duration_sec=dauer_sec, total_errors=total_errors)
 
-            # erzeugt pfad für die neue testdatei
-            path = os.path.join(test_folder, f"test_{test_num}.json")
-            
-            # schreibt die results als JSON in die Datei
-            # unterteilt auch davro welchen odus macn ausgewählt hat
-            data_to_save = {
-                "game": "classic",            # speichert Spieltyp
-                "mode": test_modus,           # speichert Testmodus
-                "duration_sec": dauer_sec,    # speichert Dauer
-                "results": results,            # Reaktionsdaten
-                "total_errors": total_errors   # Gesamtfehler
-            }
-
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data_to_save, f, indent=4)
+            st.success(f"Test gespeichert als {filename}")
 
 
-
-            st.success(f"Test gespeichert als test_{test_num}.json")
 
             # wandelt die results in ein pandas DataFrame um und zeigt es in der App an
             df = pd.DataFrame(results) if results else pd.DataFrame()
@@ -1443,7 +1494,7 @@ elif st.session_state.page == "test_start" and st.session_state.user:
 
             start_time = time.time() # Startzeit erfassen
 
-            results, total_errors = run_reaction_test(
+            results, total_errors, current_level = run_reaction_test(
                 # es wird keine duration_sec benötigt, da ja der Tets aufhört sobal man reagiert hat
                 game="f1start"   
             )
@@ -1452,23 +1503,11 @@ elif st.session_state.page == "test_start" and st.session_state.user:
             f1test_duration_sec = round(end_time - start_time, 2) # Testdauer berechnen
 
             # Test speichern (gleiches Schema!)
-            existing = [f for f in os.listdir(test_folder) if f.startswith("test_")]
-            test_num = len(existing) + 1
+            filename = save_test_result(user, "f1start", results, duration_sec=f1test_duration_sec, total_errors=total_errors)
 
-            path = os.path.join(test_folder, f"test_{test_num}.json")
+            st.success(f"Test gespeichert als {filename}")
 
-            data_to_save = {
-                "game": "f1start",
-                "mode": "F1 Start",
-                "duration_sec": f1test_duration_sec,
-                "results": results,
-                "total_errors": total_errors
-            }
 
-            with open(path, "w") as f:
-                json.dump(data_to_save, f, indent=4)
-
-            st.success(f"F1-Start gespeichert als test_{test_num}.json")
 
             # Ergebnis anzeigen
             if results and isinstance(results, list) and len(results) > 0 and "reaction_ms" in results[0]:
@@ -1481,6 +1520,7 @@ elif st.session_state.page == "test_start" and st.session_state.user:
             st.write(f"Dauer des Tests: {f1test_duration_sec} Sekunden")
 
     if game_type == "Memory-Game":
+
         st.subheader("Memory-Game")
         st.markdown("""
         **Ablauf:**
@@ -1490,142 +1530,212 @@ elif st.session_state.page == "test_start" and st.session_state.user:
         - Das Spiel endet beim ersten Fehler
         """)
 
+        level_placeholder = st.empty()
+        status_placeholder = st.empty()
+
         if st.button("Memory-Game starten"):
             st.write("Spiel läuft…")
+
+            # ESP starten
+            requests.get(
+                f"http://{ESP_IP}/start",
+                params={"game": "memory"},
+                timeout=3
+            )
+
+            current_level = 1
+            total_errors = 0
+
             old_highscore = load_memory_highscore_of_user(st.session_state.user)
-            results, total_errors = run_reaction_test(game="memory")
 
+            # 🔁 LIVE-POLLING
+            while True:
+                try:
+                    r = requests.get(f"http://{ESP_IP}/status", timeout=1)
+                    data = r.json()
 
-            existing = [f for f in os.listdir(test_folder) if f.startswith("test_")]
-            test_num = len(existing) + 1
+                    current_level = data.get("level", current_level)
+                    total_errors = data.get("errors", total_errors)
 
-            path = os.path.join(test_folder, f"test_{test_num}.json")
-
-            data_to_save = {
-                "game": "memory",
-                "mode": "Memory",
-                "duration_sec": None,
-                "results": results,
-                "total_errors": total_errors
-            }
-
-            with open(path, "w") as f:
-                json.dump(data_to_save, f, indent=4)
-
-            st.success(f"Memory-Game gespeichert als test_{test_num}.json")
-
-            new_level = None
-            if results and "level" in results[0]:
-                new_level = results[0]["level"]
-
-            if new_level is not None:
-                if old_highscore is None or new_level > old_highscore:
-                    st.balloons()
-
-                    st.success(
-                        f"🏆 **Gratuliere!**\n\n"
-                        f"Du hast deinen bisherigen Highscore gebrochen!\n\n"
-                        f"**Neuer Highscore:** Level {new_level}"
+                    # 🔴 LIVE LEVEL
+                    level_placeholder.markdown(
+                        f"### Aktuelles Level: **{current_level}**"
                     )
+
+                    if data.get("running") is False:
+                        break
+
+                except Exception:
+                    pass
+
+                time.sleep(0.3)
+
+            # 📦 Ergebnisse holen
+            try:
+                r = requests.get(f"http://{ESP_IP}/results", timeout=3)
+                results = r.json()
+            except Exception:
+                results = []
+
+            # 💾 Test speichern
+            filename = save_test_result(user, "memory", results, total_errors=total_errors)
+
+            st.success(f"Test gespeichert als {filename}")
+
+
+
+            # 🏆 Highscore prüfen
+            if old_highscore is None or current_level > old_highscore:
+                st.balloons()
+                st.success(
+                    f"🏆 **Neuer Highscore!**\n\n"
+                    f"**Level {current_level}**"
+                )
+
 
 
 # wenn Seite test_history und Nutzer eingeloggt dann das
 elif st.session_state.page == "test_history" and st.session_state.user:
-    # gleiche vorbereitungen wie oben
+
     user = st.session_state.user
     folder = user_folder(user["vorname"], user["nachname"])
     test_folder = os.path.join(folder, "tests")
 
     st.subheader("Bisherige Tests")
 
-    # liest alle Dateien im tests-Ordner und fitert nur .json Dateien - Ergebnisliste test_files
-    test_files = [f for f in os.listdir(test_folder) if f.endswith(".json")]
+    # Spiel auswählen
+    selected_game = st.radio(
+        "Welche Tests anzeigen?",
+        ["classic", "f1start", "memory"],
+        format_func=lambda x: {
+            "classic": "🎯 Klassisch",
+            "f1start": "🏎️ F1-Start",
+            "memory": "🧠 Memory"
+        }[x]
+    )
 
-    # wenn keine tests vorhanden sind wird eine info box angezeigt
+    # Ordner vom Spiel
+    game_dir = os.path.join(test_folder, selected_game)
+
+    # Testdateien sammeln
+    test_files = []
+
+    if os.path.isdir(game_dir):
+
+        test_files = [
+            f for f in os.listdir(game_dir)
+            if f.endswith(".json")
+        ]
+
+    test_files.sort(reverse=True)
+
+    # Wenn keine Tests
     if not test_files:
-        st.info("Keine Tests vorhanden.")
-    # sonst zeigt die selectbox Dropdown damit der benutzer einen test auswählen aus test_files kann
+
+        st.info("Keine Tests für dieses Spiel vorhanden.")
+        selected_test = None
+
     else:
-        # Dropdown-Menü für die Tests
-        # selected_test ist der ausgewählte test
+
         selected_test = st.selectbox(
             "Wähle einen Test aus:",
-            options=test_files,
-            key="select_test_dropdown"
+            test_files
         )
 
-        # wnn ein test ausgewählt wurde dann wird die json datei geöffnet und in ein data frame umgewandelt und angezeigt
-        if selected_test:
-            with open(os.path.join(test_folder, selected_test)) as f:
-                data = json.load(f)
+    # Wenn ein Test gewählt wurde
+    if selected_test:
 
-                game_type = data.get("game", "classic")
-                if game_type == "classic":
-                    game_label = "Klassisches Reaktionsspiel"
-                elif game_type == "f1start":
-                    game_label = "F1-Start-Simulation"
-                elif game_type == "memory":
-                    game_label = "Memory-Game"
-                else:
-                    game_label = game_type
-                    
+        file_path = os.path.join(game_dir, selected_test)
 
-            # es wird das df results eingelkesen
-            results = data.get("results", [])
-            total_errors = data.get("total_errors", 0)
+        with open(file_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
 
-            st.write(f"**Spieltyp:** {game_label}")
-            st.write(f"**Modus:** {data['mode']}")
-            
-            if data["duration_sec"] is not None:
-                st.write(f"**Dauer:** {data['duration_sec']} Sekunden")
+        # Spieltyp-Name
+        game_type = data.get("game", selected_game)
+
+        game_label_map = {
+            "classic": "Klassisches Reaktionsspiel",
+            "f1start": "F1-Start-Simulation",
+            "memory": "Memory-Game"
+        }
+
+        game_label = game_label_map.get(game_type, game_type)
+
+        # Daten holen
+        results = data.get("results", [])
+        total_errors = data.get("total_errors", 0)
+        mode = data.get("mode", "—")
+        duration = data.get("duration_sec")
+
+        # Basisinfos
+        st.write(f"**Spieltyp:** {game_label}")
+        st.write(f"**Modus:** {mode}")
+
+        if duration is not None:
+            st.write(f"**Dauer:** {duration} Sekunden")
+        else:
+            st.write("**Dauer:** spielabhängig")
+
+        # Memory Highscore
+        if game_type == "memory":
+
+            memory_highscore = load_memory_highscore_of_user(user)
+
+            if memory_highscore is not None:
+                st.write(f"**Highscore:** Level {memory_highscore}")
+
+        st.write("---")
+
+        # DataFrame
+        df = pd.DataFrame(results) if results else pd.DataFrame()
+
+        # F1
+        if game_type == "f1start":
+
+            if total_errors > 0:
+                st.error("Fehlstart!")
             else:
-                st.write("**Dauer:** spielabhängig")
+                st.success("Sauberer Start!")
 
-            # Highscore nur anzeigen, wenn aktueller Test ein Memory-Game ist
-            if game_type == "memory":
-                memory_highscore = load_memory_highscore_of_user(st.session_state.user)
+            if results and "reaction_ms" in results[0]:
+                st.write(
+                    f"Deine Startreaktionszeit: "
+                    f"**{results[0]['reaction_ms']} ms**"
+                )
+            else:
+                st.info("Keine gültigen Reaktionszeiten vorhanden.")
 
-                if memory_highscore is not None:
-                    st.write(f"**Highscore:** Level {memory_highscore}")
+        # Classic
+        elif game_type == "classic":
 
+            st.dataframe(df)
 
-            st.write("---")
-            
-            
-            df = pd.DataFrame(results) if results else pd.DataFrame()
+            st.write(f"Gesamtfehler: {total_errors}")
 
-            if data['game'] == "f1start":                
-                if total_errors > 0:
-                    st.error("Fehlstart!")
-                else:
-                    st.success("Sauberer Start!")
+            if "reaction_ms" in df.columns and not df["reaction_ms"].empty:
 
-                if results and "reaction_ms" in results[0]:
-                    st.write(f"Deine Startreaktionszeit: **{results[0]['reaction_ms']} ms**")
-                else:
-                    st.info("Keine gültigen Reaktionszeiten vorhanden.")
-            
+                st.write(
+                    "Durchschnitt:",
+                    round(df["reaction_ms"].mean(), 1),
+                    "ms"
+                )
+                st.write("Schnellste:", df["reaction_ms"].min(), "ms")
+                st.write("Langsamste:", df["reaction_ms"].max(), "ms")
 
-            elif data['game'] == "classic":
-                st.dataframe(df)
-                # Gesamtfehleranzahl anzeigen
-                st.write(f"Gesamtfehler: {data.get('total_errors', 0)}")
+            else:
+                st.info("Keine gültigen Reaktionszeiten vorhanden.")
 
-                # Optionale Statistiken
-                # wenn die spalte reactrion_ms vorhanden ist dann werden einige werte berechnet 
-                if "reaction_ms" in df.columns and not df["reaction_ms"].empty:
-                    st.write("Durchschnitt:", round(df["reaction_ms"].mean(), 1), "ms")
-                    st.write("Schnellste Reaktion:", df["reaction_ms"].min(), "ms")
-                    st.write("Langsamste Reaktion:", df["reaction_ms"].max(), "ms")
-                else:
-                    st.info("Keine gültigen Reaktionszeiten vorhanden.")
+        # Memory
+        elif game_type == "memory":
 
-            elif data['game'] == "memory":
-                if results and "level" in results[0]:
-                    st.success(f"Erreichtes Memory-Level: {results[0]['level']}")
-                else:
-                    st.info("Kein gültiges Memory-Ergebnis vorhanden.")
+            if results and "level" in results[0]:
+                st.success(
+                    f"Erreichtes Memory-Level: "
+                    f"{results[0]['level']}"
+                )
+            else:
+                st.info("Kein gültiges Memory-Ergebnis vorhanden.")
+
 
             
 

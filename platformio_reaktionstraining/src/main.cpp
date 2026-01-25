@@ -87,6 +87,7 @@ int f1LedIndex = 0;
 int memorySequence[MEMORY_MAX_LEN];  // Array zur Speicherung der Merksequenz
 int memoryLength = 1;  // aktuelle Länge der Sequenz
 int userIndex = 0;   // Index für die Benutzereingabe
+bool memInitDone = false;  // Initialisierungsflag für Memory-Spiel
 
 bool showingSequence = true;   // ob gerade die Sequenz gezeigt wird
 unsigned long lastStepTime = 0;     // Zeitpunkt der letzten Aktion
@@ -98,6 +99,8 @@ enum MemoryState {
     MEM_SUCCESS,
     MEM_FAIL
 };
+
+int memoryLevel = 1; // aktuelles Memory-Level (live)
 
 MemoryState memState = MEM_SHOW_SEQUENCE;
 
@@ -218,8 +221,21 @@ void handleStart() {
     resultsJson = "[]";   // alte Ergebnisse löschen
     errorCount = 0;
 
-    memoryLength = 1;
-    memorySequence[0] = random(0, 7);
+    if (currentGame == GAME_MEMORY) {
+        memState = MEM_SHOW_SEQUENCE;
+        memInitDone = false;
+        memoryLength = 1;
+        memoryLevel = 1;
+        userIndex = 0;
+
+        for (int i = 0; i < MEMORY_MAX_LEN; i++) {
+            memorySequence[i] = -1;
+        }
+        memorySequence[0] = random(0, 7);
+    }
+
+
+
     showIndex = 0;
     userIndex = 0;
     lastStepTime = millis();
@@ -234,8 +250,6 @@ void handleStart() {
 
     // F1-Reset
     f1State = F1_WAIT_START;
-    // Memory Reset
-    memState = MEM_SHOW_SEQUENCE;
 
     testRunning = true;
     testStartTime = millis();  // Zeitpunkt merken wann Test gestartet wurde
@@ -259,14 +273,27 @@ void handleStop() {
 }
 
 void handleStatus() {
-    // Status zurückgeben ob Test läuft und wieviele Fehler
+
+    int displayLevel = 0;
+
+    if (currentGame == GAME_MEMORY) {
+        displayLevel = memoryLevel;
+
+        if (memState == MEM_FAIL) {
+            displayLevel = memoryLevel - 1;
+            if (displayLevel < 0) displayLevel = 0;
+        }
+    }
+
     String json = "{";
     json += "\"running\":" + String(testRunning ? "true" : "false") + ",";
-    json += "\"errors\":" + String(errorCount);
+    json += "\"errors\":" + String(errorCount) + ",";
+    json += "\"level\":" + String(displayLevel);
     json += "}";
 
     server.send(200, "application/json", json);
 }
+
 
 void handleResults() {
     String json = resultsJson;
@@ -467,81 +494,161 @@ void runF1StartGame() {
 }
 
 void runMemoryGame() {
-    static unsigned long buttonLastPress = 0;
+
+    static bool buttonWasPressed[7] = {false, false, false, false, false, false, false};
+    static unsigned long lastPressTime[7] = {0};
     static bool ledOn = false;
 
-    // -------- SEQUENZ ANZEIGEN --------
+    static unsigned long stateChangeTime = 0;
+    static bool waitingRelease = false;
+
+    static int activeButton = -1;
+
+    const unsigned long DEBOUNCE_TIME = 120;
+
+
+    // ---------- SEQUENZ ANZEIGEN ----------
     if (memState == MEM_SHOW_SEQUENCE) {
 
-        // LED einschalten
+        if (!memInitDone) {
+            for (int i = 0; i < 7; i++) {
+                buttonWasPressed[i] = false;
+            }
+            showIndex = 0;
+            ledOn = false;
+            lastStepTime = millis();
+            memInitDone = true;
+        }
+
+        // LED EIN
         if (!ledOn && millis() - lastStepTime > 600) {
             digitalWrite(LED_PINS[memorySequence[showIndex]], HIGH);
             ledOn = true;
             lastStepTime = millis();
         }
 
-        // LED wieder ausschalten
-        if (ledOn && millis() - lastStepTime > 200) {
+        // LED AUS
+        if (ledOn && millis() - lastStepTime > 250) {
             digitalWrite(LED_PINS[memorySequence[showIndex]], LOW);
             ledOn = false;
             showIndex++;
             lastStepTime = millis();
 
-            // Sequenz fertig angezeigt
             if (showIndex >= memoryLength) {
-                showIndex = 0;
                 userIndex = 0;
+                memInitDone = false;
+
+                // ALLES sauber zurücksetzen
+                for (int i = 0; i < 7; i++) {
+                    lastPressTime[i] = 0;
+                    buttonWasPressed[i] = false;
+                }
+
+                waitingRelease = false;
+                activeButton = -1;
+
                 memState = MEM_WAIT_INPUT;
             }
+
         }
     }
 
-    // -------- AUF BENUTZER EINGABE WARTEN --------
+    // ---------- BENUTZER EINGABE ----------
     else if (memState == MEM_WAIT_INPUT) {
+
         for (int i = 0; i < 7; i++) {
-            if (digitalRead(BTN_PINS[i]) == LOW) {
+            bool pressed = (digitalRead(BTN_PINS[i]) == LOW);
+
+            // neuer Tastendruck
+            if (pressed && !buttonWasPressed[i] && !waitingRelease) {
+                unsigned long now = millis();
 
                 // Entprellung
-                if (millis() - buttonLastPress < 200) return;
-                buttonLastPress = millis();
+                if (now - lastPressTime[i] < DEBOUNCE_TIME) continue;
+                lastPressTime[i] = now;
 
-                // Richtiger Button?
+                buttonWasPressed[i] = true;
+                waitingRelease = true;  // 🔒 blockiert weitere Eingaben
+                activeButton = i;
+                // -------- RICHTIG --------
                 if (i == memorySequence[userIndex]) {
                     userIndex++;
 
-                    // Ganze Sequenz korrekt
                     if (userIndex >= memoryLength) {
                         memState = MEM_SUCCESS;
+                        stateChangeTime = millis();
                     }
                 }
+                // -------- FALSCH --------
                 else {
                     memState = MEM_FAIL;
+                    stateChangeTime = millis();
                 }
-                break; // nur EIN Button pro Durchlauf
+                break;
             }
+
+            // Button losgelassen → Lock aufheben (NUR der aktive Button)
+            if (!pressed && i == activeButton) {
+                buttonWasPressed[i] = false;
+                waitingRelease = false;
+                activeButton = -1;
+            }
+
         }
     }
 
-    // -------- ERFOLG --------
+
+    // ---------- ERFOLG ----------
     else if (memState == MEM_SUCCESS) {
-        if (memoryLength < MEMORY_MAX_LEN) {
-            memorySequence[memoryLength] = random(0, 7);
-            memoryLength++;
+
+        if (millis() - stateChangeTime > 400) {
+
+            if (memoryLength < MEMORY_MAX_LEN) {
+                memorySequence[memoryLength] = random(0, 7);
+                memoryLength++;
+                memoryLevel++;
+            }
+
+            // Reset für nächste Runde
+            userIndex = 0;
+            memInitDone = false;
+            waitingRelease = false;
+
+            // Warten bis ALLE Buttons losgelassen sind
+            bool anyPressed;
+            do {
+                anyPressed = false;
+                for (int i = 0; i < 7; i++) {
+                    if (digitalRead(BTN_PINS[i]) == LOW) {
+                        anyPressed = true;
+                        break;
+                    }
+                }
+            } while (anyPressed);
+
+
+            memState = MEM_SHOW_SEQUENCE;
         }
-
-        showIndex = 0;
-        userIndex = 0;
-        lastStepTime = millis();
-        memState = MEM_SHOW_SEQUENCE;
     }
 
-    // -------- FEHLER / SPIEL ENDE --------
+
+    // ---------- FEHLER ----------
     else if (memState == MEM_FAIL) {
-        errorCount++;
-        resultsJson = "[{\"level\":" + String(memoryLength - 1) + "}]";
-        testRunning = false;
+
+        if (millis() - stateChangeTime > 500) {
+
+            errorCount++;
+
+            resultsJson = "[{\"level\":" + String(memoryLength - 1) + "}]";
+
+            waitingRelease = false;
+            testRunning = false;
+        }
     }
+
 }
+
+
 
 
 void loop() {
@@ -555,7 +662,15 @@ void loop() {
         }
         return;  // wenn F1-Start und Test nicht läuft, nichts weiter tun außer wenn der test noch läuft die Funktion aufrufen
     }
-    
+
+    if (currentGame == GAME_MEMORY) {
+        if (testRunning) {
+            runMemoryGame();
+        }
+        return;  // wenn F1-Start und Test nicht läuft, nichts weiter tun außer wenn der test noch läuft die Funktion aufrufen
+    }
+
+
     // wenn Test läuft und die Zeit vorbei ist und das aktuelle Spiel Classic ist, Test beenden
     // weil bei F1 Star gibt es keine  testdauer
     if (testRunning && currentGame == GAME_CLASSIC && millis() - testStartTime > TEST_DURATION) {
