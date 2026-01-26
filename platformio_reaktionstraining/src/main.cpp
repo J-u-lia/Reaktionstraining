@@ -101,6 +101,7 @@ enum MemoryState {
 };
 
 int memoryLevel = 1; // aktuelles Memory-Level (live)
+int confirmedLevel = 1;
 
 MemoryState memState = MEM_SHOW_SEQUENCE;
 
@@ -227,6 +228,7 @@ void handleStart() {
         memoryLength = 1;
         memoryLevel = 1;
         userIndex = 0;
+        confirmedLevel = 1;
 
         for (int i = 0; i < MEMORY_MAX_LEN; i++) {
             memorySequence[i] = -1;
@@ -277,12 +279,12 @@ void handleStatus() {
     int displayLevel = 0;
 
     if (currentGame == GAME_MEMORY) {
-        displayLevel = memoryLevel;
+        displayLevel = confirmedLevel;
 
-        if (memState == MEM_FAIL) {
-            displayLevel = memoryLevel - 1;
-            if (displayLevel < 0) displayLevel = 0;
-        }
+        // if (memState == MEM_FAIL) {
+        //     displayLevel = memoryLevel - 1;
+        //     if (displayLevel < 0) displayLevel = 0;
+        // }
     }
 
     String json = "{";
@@ -506,7 +508,7 @@ void runMemoryGame() {
 
     const unsigned long DEBOUNCE_TIME = 120;
 
-
+    static bool waitForAllReleased = false;
     // ---------- SEQUENZ ANZEIGEN ----------
     if (memState == MEM_SHOW_SEQUENCE) {
 
@@ -586,14 +588,27 @@ void runMemoryGame() {
                 }
                 break;
             }
+        }
 
-            // Button losgelassen → Lock aufheben (NUR der aktive Button)
-            if (!pressed && i == activeButton) {
-                buttonWasPressed[i] = false;
-                waitingRelease = false;
-                activeButton = -1;
+        // 2️⃣ HIER HIN 👇  (nach der for-Schleife!)
+        if (waitingRelease) {
+
+            bool allReleased = true;
+            for (int j = 0; j < 7; j++) {
+                if (digitalRead(BTN_PINS[j]) == LOW) {
+                    allReleased = false;
+                    break;
+                }
             }
 
+            if (allReleased) {
+                waitingRelease = false;
+                activeButton = -1;
+
+                for (int j = 0; j < 7; j++) {
+                    buttonWasPressed[j] = false;
+                }
+            }
         }
     }
 
@@ -601,33 +616,39 @@ void runMemoryGame() {
     // ---------- ERFOLG ----------
     else if (memState == MEM_SUCCESS) {
 
-        if (millis() - stateChangeTime > 400) {
+        // kurze Pause nach Erfolg
+        if (!waitForAllReleased && millis() - stateChangeTime > 400) {
+            waitForAllReleased = true;
+        }
 
-            if (memoryLength < MEMORY_MAX_LEN) {
-                memorySequence[memoryLength] = random(0, 7);
-                memoryLength++;
-                memoryLevel++;
+        if (waitForAllReleased) {
+            bool anyPressed = false;
+
+            for (int i = 0; i < 7; i++) {
+                if (digitalRead(BTN_PINS[i]) == LOW) {
+                    anyPressed = true;
+                    break;
+                }
             }
 
-            // Reset für nächste Runde
-            userIndex = 0;
-            memInitDone = false;
-            waitingRelease = false;
+            // ✅ alle Buttons sind losgelassen
+            if (!anyPressed) {
 
-            // Warten bis ALLE Buttons losgelassen sind
-            bool anyPressed;
-            do {
-                anyPressed = false;
-                for (int i = 0; i < 7; i++) {
-                    if (digitalRead(BTN_PINS[i]) == LOW) {
-                        anyPressed = true;
-                        break;
-                    }
+                if (memoryLength < MEMORY_MAX_LEN) {
+                    memorySequence[memoryLength] = random(0, 7);
+                    confirmedLevel = memoryLength;  // ⭐ WICHTIG
+                    memoryLength++;
+                    memoryLevel++;
                 }
-            } while (anyPressed);
 
+                // Reset für nächste Runde
+                userIndex = 0;
+                memInitDone = false;
+                waitingRelease = false;
+                waitForAllReleased = false;
 
-            memState = MEM_SHOW_SEQUENCE;
+                memState = MEM_SHOW_SEQUENCE;
+            }
         }
     }
 
@@ -639,7 +660,7 @@ void runMemoryGame() {
 
             errorCount++;
 
-            resultsJson = "[{\"level\":" + String(memoryLength - 1) + "}]";
+            resultsJson = "[{\"level\":" + String(confirmedLevel) + "}]";
 
             waitingRelease = false;
             testRunning = false;

@@ -789,7 +789,7 @@ if st.session_state.page == "home":
                 # Farben definieren
                 color_scale = alt.Scale(
                     domain=["schnell", "langsam"],
-                    range=["green", "red"]
+                    range=["green", "blue"]
                 )
 
                 # Linie nach Farbe einfärben
@@ -826,7 +826,7 @@ if st.session_state.page == "home":
                         # einen roten kreis im diagramm für die nutzerzeit erstellen
                         point = alt.Chart(user_df).mark_point(
                             size=120,
-                            color="blue"
+                            color="red"
                         ).encode( # koordinaten aus dem dataframe
                             x="reaction_ms:Q",
                             y="count:Q"
@@ -955,7 +955,7 @@ if st.session_state.page == "home":
 
                 line_slow = alt.Chart(slow_df).mark_line(
                     interpolate="monotone",
-                    color="red"
+                    color="blue"
                 ).encode(
                     x="reaction_ms:Q",
                     y="count:Q"
@@ -984,7 +984,7 @@ if st.session_state.page == "home":
 
                         point = alt.Chart(user_df).mark_point(
                             size=120,
-                            color="blue"
+                            color="red"
                         ).encode(
                             x="reaction_ms:Q",
                             y="count:Q"
@@ -1092,7 +1092,8 @@ if st.session_state.page == "home":
 
                 # Linie erstellen
                 line = alt.Chart(curve_df).mark_line(
-                    interpolate="monotone"
+                    interpolate="monotone",
+                    color="blue"
                 ).encode(
                     x=alt.X("level:Q", title="Erreichtes Level"),
                     y=alt.Y("count:Q", title="Anzahl Benutzer")
@@ -1368,12 +1369,12 @@ elif st.session_state.page == "test_start" and st.session_state.user:
 
     game_type = st.radio(
         "Welches Spiel möchtest du spielen?",
-        ["klassisches Reaktionsspiel", "F1-Start-Simulation", "Memory-Game"]
+        ["🎯 klassisches Reaktionsspiel", "🏎️ F1-Start-Simulation", "🧠 Memory-Game"]
     )
     st.write("---")
 
     # wenn der Nutzer das klassische Reaktionsspiel ausgewählt hat dann wird der entsprechende Block ausgeführt
-    if game_type == "klassisches Reaktionsspiel":
+    if game_type == "🎯 klassisches Reaktionsspiel":
         st.subheader("Reaktionsspiel – Anleitung")
 
         st.markdown(
@@ -1477,7 +1478,7 @@ elif st.session_state.page == "test_start" and st.session_state.user:
             else:
                 st.info("Keine gültigen Reaktionszeiten vorhanden.")
 
-    if game_type == "F1-Start-Simulation":
+    if game_type == "🏎️ F1-Start-Simulation":
         st.subheader("F1-Start-Simulation")
         st.markdown(
         """
@@ -1519,7 +1520,7 @@ elif st.session_state.page == "test_start" and st.session_state.user:
             st.write(f"Gesamtfehler: {total_errors}")
             st.write(f"Dauer des Tests: {f1test_duration_sec} Sekunden")
 
-    if game_type == "Memory-Game":
+    if game_type == "🧠 Memory-Game":
 
         st.subheader("Memory-Game")
         st.markdown("""

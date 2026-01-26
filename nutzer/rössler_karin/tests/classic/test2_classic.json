@@ -1,0 +1,40 @@
+{
+    "game": "classic",
+    "mode": "Schnelltest (20 Sekunden)",
+    "duration_sec": 20,
+    "results": [
+        {
+            "led": 3,
+            "reaction_ms": 626
+        },
+        {
+            "led": 2,
+            "reaction_ms": 627
+        },
+        {
+            "led": 3,
+            "reaction_ms": 2081
+        },
+        {
+            "led": 1,
+            "reaction_ms": 422
+        },
+        {
+            "led": 0,
+            "reaction_ms": 1559
+        },
+        {
+            "led": 2,
+            "reaction_ms": 632
+        },
+        {
+            "led": 1,
+            "reaction_ms": 417
+        },
+        {
+            "led": 0,
+            "reaction_ms": 930
+        }
+    ],
+    "total_errors": 0
+}
